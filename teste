@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro de Produção — Pro Link</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #f0f4f2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1e293b; }
+        body.noscroll { overflow: hidden; }
+
+        .app { max-width: 500px; margin: auto; background: white; min-height: 100vh; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+
+        .top { background: #356852; color: white; padding: 24px 20px 20px; text-align: center; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; }
+        .logo-container { background: white; padding: 12px 20px; border-radius: 12px; display: inline-block; margin-bottom: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .logo-container img { max-width: 180px; height: auto; display: block; }
+        .top h1 { margin: 8px 0 0; font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+        .top p { margin: 4px 0 0; font-size: 13px; opacity: 0.9; }
+        #cfgInfo { margin-top: 6px; font-size: 11px; opacity: .8; }
+
+        main { padding: 20px; }
+        .sec { margin-bottom: 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
+        .t { font-weight: 700; color: #356852; margin-bottom: 12px; font-size: 15px; border-bottom: 2px solid #e8f0ec; padding-bottom: 6px; }
+        label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 5px; color: #334155; }
+
+        input, select, textarea { width: 100%; padding: 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 14px; color: #1e293b; transition: all 0.2s; outline: none; background: #fff; font-family: inherit; }
+        input:focus, select:focus, textarea:focus { border-color: #356852; box-shadow: 0 0 0 3px rgba(53, 104, 82, 0.15); }
+        textarea { min-height: 80px; resize: vertical; }
+
+        .card, .choice { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin: 8px 0; background: #f8faf9; }
+        .choice { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
+        .choice input { width: auto; margin: 0; }
+
+        .grid { display: grid; grid-template-columns: 1fr 110px; gap: 10px; align-items: center; margin-top: 8px; }
+        .unit { font-size: 12px; color: #64748b; font-weight: 600; background: #e8f0ec; border-radius: 6px; padding: 8px; text-align: center; }
+
+        .pick { width: 100%; text-align: left; padding: 12px; border: 1.5px dashed #94a3b8; border-radius: 8px; background: #fff; color: #64748b; font-size: 14px; cursor: pointer; font-family: inherit; }
+        .pick.sel { border-style: solid; border-color: #356852; color: #1e293b; font-weight: 600; }
+        .pick::after { content: '🔍'; float: right; }
+
+        .btn { width: 100%; padding: 14px; border: 0; border-radius: 8px; font-weight: 700; cursor: pointer; transition: background 0.2s; font-size: 14px; font-family: inherit; }
+        .btn:disabled { opacity: .6; cursor: not-allowed; }
+        .add { background: #e8f0ec; color: #356852; }
+        .add:hover { background: #d1e1d9; }
+        .rm { background: #fef2f2; color: #dc2626; margin-top: 10px; border: 1px solid #fecaca; padding: 10px; }
+        .send { background: #356852; color: white; font-size: 16px; margin-top: 12px; box-shadow: 0 4px 12px rgba(53, 104, 82, 0.25); }
+        .send:hover:not(:disabled) { background: #2a5442; }
+
+        .hidden { display: none !important; }
+        .note { font-size: 12px; color: #64748b; margin-top: 6px; line-height: 1.4; }
+        .input-error { border-color: #dc2626 !important; background-color: #fef2f2 !important; }
+
+        #loading { position: fixed; top: 0; left: 0; width: 100%; background: #356852; color: white; text-align: center; padding: 8px; font-size: 13px; font-weight: bold; display: none; z-index: 999; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+        #fila { display: none; margin: 12px 20px 0; padding: 10px 12px; border-radius: 8px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font-size: 13px; font-weight: 600; cursor: pointer; }
+        #cfgErro { display: none; margin: 12px 20px 0; padding: 12px; border-radius: 8px; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; font-size: 13px; }
+        #cfgErro button { margin-top: 8px; }
+
+        /* seletor de serviços */
+        .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.55); z-index: 1000; display: flex; align-items: flex-end; justify-content: center; }
+        .sheet { background: #fff; width: 100%; max-width: 500px; height: 88vh; border-radius: 16px 16px 0 0; display: flex; flex-direction: column; overflow: hidden; }
+        .sheet-head { display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid #e2e8f0; }
+        .sheet-head button { border: 0; background: #f1f5f9; border-radius: 8px; width: 44px; font-size: 16px; cursor: pointer; }
+        .chips { display: flex; gap: 6px; overflow-x: auto; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; -webkit-overflow-scrolling: touch; }
+        .chip { flex: 0 0 auto; border: 1px solid #cbd5e1; background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer; font-family: inherit; white-space: nowrap; }
+        .chip.on { background: #356852; border-color: #356852; color: #fff; }
+        .plist { flex: 1; overflow-y: auto; padding: 4px 12px 24px; -webkit-overflow-scrolling: touch; }
+        .ghead { font-size: 11px; font-weight: 700; color: #356852; text-transform: uppercase; letter-spacing: .4px; margin: 14px 0 4px; }
+        .pitem { display: block; width: 100%; text-align: left; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin: 5px 0; cursor: pointer; font-family: inherit; }
+        .pitem:hover:not(:disabled) { background: #f0f7f3; border-color: #356852; }
+        .pitem:disabled { opacity: .5; cursor: not-allowed; }
+        .pn { display: block; font-size: 14px; font-weight: 600; color: #1e293b; }
+        .pm { display: block; font-size: 11px; color: #64748b; margin-top: 2px; }
+        .tag { font-size: 10px; color: #9a3412; font-weight: 700; }
+        .empty { padding: 24px 8px; text-align: center; color: #64748b; font-size: 13px; }
+
+        /* PIN */
+        .pinbox { background: #fff; width: calc(100% - 40px); max-width: 360px; border-radius: 14px; padding: 20px; margin: auto; }
+        .pinbox h3 { margin: 0 0 6px; color: #356852; }
+        .pinbox p { margin: 0 0 12px; font-size: 13px; color: #64748b; }
+        #pinErro { color: #dc2626; font-size: 12px; margin-top: 6px; min-height: 16px; }
+    </style>
+</head>
+<body>
+
+<div id="loading">Enviando registro...</div>
+
+<div class="app">
+    <header class="top">
+        <div class="logo-container">
+            <img src="https://i.postimg.cc/qv7HPLhx/VERDE.png" alt="Pro Link Serviços">
+        </div>
+        <h1>Registro de Produção</h1>
+        <p>Infraestrutura</p>
+        <div id="cfgInfo"></div>
+    </header>
+
+    <div id="fila" onclick="processarFila(true)"></div>
+    <div id="cfgErro">
+        Não foi possível carregar as listas (equipes, serviços...). Verifique a conexão.
+        <br><button class="btn add" type="button" onclick="carregarConfig()">Tentar novamente</button>
+    </div>
+
+    <!-- FORMULÁRIO PRINCIPAL -->
+    <main id="form">
+        <div class="sec">
+            <div class="t">1. Identificação</div>
+
+            <label for="numOS">Número da OS</label>
+            <input id="numOS" placeholder="Ex: OS-10254" autocomplete="off">
+
+            <label for="selectEquipe">Equipe</label>
+            <select id="selectEquipe" onchange="atualizarMembros()"><option value="">Carregando...</option></select>
+
+            <label for="selectResponsavel">Responsável</label>
+            <select id="selectResponsavel" disabled>
+                <option value="">Selecione primeiro a equipe</option>
+            </select>
+
+            <label for="dataAtual">Data</label>
+            <input type="date" id="dataAtual">
+
+            <label for="localRef">Local / referência</label>
+            <input id="localRef" placeholder="Bairro, cidade ou referência">
+        </div>
+
+        <div class="sec">
+            <div class="t">2. Tipo de demanda</div>
+            <select id="selectDemanda"><option value="">Carregando...</option></select>
+        </div>
+
+        <div class="sec">
+            <div class="t">3. Serviços realizados</div>
+            <div id="services"></div>
+            <button class="btn add" type="button" onclick="addServico()">+ Adicionar serviço</button>
+            <div class="note">Toque em “escolher o serviço” para buscar pelo nome ou filtrar por categoria. Adicione somente os serviços executados.</div>
+        </div>
+
+        <div class="sec">
+            <div class="t">4. Ocorrências / imprevistos</div>
+            <label>Houve algum imprevisto?</label>
+            <div class="choice"><input type="radio" name="i" value="n" checked onchange="tog('ib','i')"> Não</div>
+            <div class="choice"><input type="radio" name="i" value="s" onchange="tog('ib','i')"> Sim</div>
+            <div id="ib" class="hidden">
+                <div id="occurrences"></div>
+                <button class="btn add" type="button" onclick="addOcorrencia()" style="margin-top: 10px;">+ Adicionar ocorrência</button>
+                <div class="note">A descrição do imprevisto é obrigatória ao adicionar uma ocorrência.</div>
+            </div>
+        </div>
+
+        <div class="sec" id="secTransporte">
+            <div class="t">5. Transporte de materiais</div>
+            <label>Houve transporte durante o deslocamento?</label>
+            <div class="choice"><input type="radio" name="tr" value="n" checked onchange="tog('tb','tr')"> Não</div>
+            <div class="choice"><input type="radio" name="tr" value="s" onchange="tog('tb','tr')"> Sim</div>
+            <div id="tb" class="hidden">
+                <label for="selectTipoTransporte">Tipo</label>
+                <select id="selectTipoTransporte"></select>
+                <label for="qtdViagens">Quantidade de viagens</label>
+                <input type="number" id="qtdViagens" min="1" step="1" value="1" inputmode="numeric">
+                <div class="note">
+                    Só conta mais de 1 viagem se houver <b>desvio de rota</b>. Ex.: indo para Cícero Dantas, deixar material em Fátima (que faz parte da rota) = 1 viagem. Se também precisar ir a Adustina (muda a rota) = 2 viagens.
+                </div>
+            </div>
+        </div>
+
+        <div class="sec">
+            <div class="t">6. Observações</div>
+            <textarea id="obsGerais" placeholder="Informações adicionais, se necessário."></textarea>
+        </div>
+
+        <button class="btn send" id="btnEnviar" type="button" onclick="enviar()">Enviar registro</button>
+    </main>
+
+    <div id="ok" style="display:none;text-align:center;padding:40px 20px;">
+        <h2 id="okTitulo" style="color: #356852; margin-bottom: 8px;">✓ Registro enviado</h2>
+        <p id="okTexto" style="color: #64748b; font-size: 14px; line-height: 1.5;">Lançamento gravado com sucesso.</p>
+        <button class="btn send" id="btnReenviar" type="button" onclick="processarFila(true)" style="display:none;">Tentar enviar agora</button>
+        <button class="btn add" onclick="location.reload()" style="margin-top:20px;">Novo Registro</button>
+    </div>
+</div>
+
+<!-- Seletor de serviços -->
+<div id="picker" class="overlay hidden" onclick="if(event.target===this)fecharPicker()">
+    <div class="sheet">
+        <div class="sheet-head">
+            <input id="pSearch" type="search" placeholder="Buscar serviço (ex.: cto, poste, fusão)" autocomplete="off" oninput="renderLista()">
+            <button type="button" onclick="fecharPicker()" aria-label="Fechar">✕</button>
+        </div>
+        <div class="chips" id="pChips"></div>
+        <div class="plist" id="pList"></div>
+    </div>
+</div>
+
+<!-- PIN -->
+<div id="pinOverlay" class="overlay hidden" style="align-items:center;">
+    <div class="pinbox">
+        <h3>Acesso</h3>
+        <p>Digite o PIN para usar o aplicativo.</p>
+        <input id="pinInput" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" onkeydown="if(event.key==='Enter')confirmarPin()">
+        <div id="pinErro"></div>
+        <button class="btn send" type="button" onclick="confirmarPin()" style="margin-top:6px;">Entrar</button>
+    </div>
+</div>
+
+<script>
+    // ============================================================
+    //  CONFIGURAÇÃO
+    // ============================================================
+    // Se criar uma nova implantação do Apps Script, troque o endereço abaixo.
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx-yJQVxbrjZu0_YInek5GjKKLrArLm40iQhP05TJpAHqK5MMX5CpUGb553cgMcw1ns/exec";
+
+    const APP_VERSAO = "2.0";
+    const LS = { config: 'pl_config_v2', pin: 'pl_pin', fila: 'pl_fila_v2', uso: 'pl_uso_v2', ultimo: 'pl_ultimo_v2' };
+    const TIMEOUT_ENVIO_MS = 30000;
+    const TIMEOUT_CONFIG_MS = 15000;
+    const DIAS_RETROATIVO_AVISO = 7;
+
+    // ============================================================
+    //  UTILIDADES
+    // ============================================================
+    const $ = id => document.getElementById(id);
+    function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+    function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim(); }
+    function lsGet(k, def) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch (e) { return def; } }
+    function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+    function novoId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+    function showLoading(show, msg) { const l = $('loading'); if (msg) l.textContent = msg; l.style.display = show ? 'block' : 'none'; }
+    function getPin() { try { return localStorage.getItem(LS.pin) || ''; } catch (e) { return ''; } }
+    function setPin(p) { try { localStorage.setItem(LS.pin, p); } catch (e) {} }
+
+    async function fetchTimeout(url, opts, ms) {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), ms);
+        try { return await fetch(url, Object.assign({}, opts, { signal: ctrl.signal })); }
+        finally { clearTimeout(t); }
+    }
+
+    // ============================================================
+    //  CADASTROS (vêm da planilha)
+    // ============================================================
+    let cfg = { equipes: {}, ordemEquipes: [], demandas: [], servicos: [], ocorrencias: [], transportes: [], carregada: false };
+    let servMap = {};
+
+    function aplicarConfig(j) {
+        cfg.equipes = j.equipes || {};
+        cfg.ordemEquipes = (j.ordemEquipes && j.ordemEquipes.length) ? j.ordemEquipes : Object.keys(cfg.equipes);
+        cfg.demandas = j.demandas || [];
+        cfg.servicos = (j.servicos || []).map(s => ({ n: s.n, c: s.c || 'Outros', u: s.u || 'unidade', _k: norm(s.n + ' ' + (s.c || '')) }));
+        cfg.ocorrencias = j.ocorrencias || [];
+        cfg.transportes = j.transportes || [];
+        cfg.carregada = true;
+        servMap = {}; cfg.servicos.forEach(s => servMap[s.n] = s);
+
+        renderizarEquipes();
+        renderizarDemandas();
+        renderizarTransportes();
+        refrescarOcorrencias();
+        refrescarServicosSelecionados();
+    }
+
+    function infoConfig(texto) { $('cfgInfo').textContent = texto || ''; }
+
+    async function carregarConfig() {
+        const cache = lsGet(LS.config, null);
+        if (cache && !cfg.carregada) { aplicarConfig(cache); infoConfig('Usando a última lista salva…'); }
+        $('cfgErro').style.display = 'none';
+        try {
+            const url = GOOGLE_SCRIPT_URL + '?action=config&pin=' + encodeURIComponent(getPin()) + '&t=' + Date.now();
+            const r = await fetchTimeout(url, { redirect: 'follow' }, TIMEOUT_CONFIG_MS);
+            const j = await r.json();
+            if (j && j.code === 'pin') { pedirPin(getPin() ? 'PIN incorreto.' : ''); return; }
+            if (!j || !j.ok) throw new Error((j && j.message) || 'Resposta inválida');
+            lsSet(LS.config, j);
+            aplicarConfig(j);
+            const h = new Date();
+            infoConfig('Listas atualizadas às ' + String(h.getHours()).padStart(2, '0') + ':' + String(h.getMinutes()).padStart(2, '0'));
+        } catch (err) {
+            console.error('Config:', err);
+            if (!cfg.carregada) { $('cfgErro').style.display = 'block'; infoConfig(''); }
+            else infoConfig('Sem conexão — usando a última lista salva.');
+        }
+    }
+
+    // PIN
+    function pedirPin(msg) {
+        $('pinErro').textContent = msg || '';
+        $('pinInput').value = '';
+        $('pinOverlay').classList.remove('hidden');
+        setTimeout(() => $('pinInput').focus(), 50);
+    }
+    function confirmarPin() {
+        const p = $('pinInput').value.trim();
+        if (!p) { $('pinErro').textContent = 'Digite o PIN.'; return; }
+        setPin(p);
+        $('pinOverlay').classList.add('hidden');
+        carregarConfig();
+        processarFila(true);
+    }
+
+    // ---- selects ----
+    function renderizarEquipes() {
+        const sel = $('selectEquipe');
+        const atual = sel.value || (lsGet(LS.ultimo, {}).equipe || '');
+        sel.innerHTML = '';
+        sel.appendChild(new Option('Selecione', ''));
+        cfg.ordemEquipes.forEach(eq => { if (cfg.equipes[eq]) sel.appendChild(new Option(eq, eq)); });
+        if (atual && cfg.equipes[atual]) sel.value = atual;
+        atualizarMembros();
+    }
+
+    function atualizarMembros() {
+        const equipe = $('selectEquipe').value;
+        const sel = $('selectResponsavel');
+        const antes = sel.value || (lsGet(LS.ultimo, {}).responsavel || '');
+        sel.innerHTML = '';
+        if (!equipe) {
+            sel.disabled = true;
+            sel.appendChild(new Option('Selecione primeiro a equipe', ''));
+            return;
+        }
+        const membros = cfg.equipes[equipe] || [];
+        sel.disabled = false;
+        sel.appendChild(new Option('Selecione o responsável', ''));
+        if (membros.length) {
+            membros.forEach(m => sel.appendChild(new Option(m, m)));
+            if (antes && membros.indexOf(antes) !== -1) sel.value = antes;
+        } else {
+            sel.appendChild(new Option('(Nenhum membro cadastrado nesta equipe)', ''));
+        }
+    }
+
+    function renderizarDemandas() {
+        const sel = $('selectDemanda');
+        const atual = sel.value;
+        sel.innerHTML = '';
+        sel.appendChild(new Option('Selecione', ''));
+        cfg.demandas.forEach(d => sel.appendChild(new Option(d, d)));
+        if (atual && cfg.demandas.indexOf(atual) !== -1) sel.value = atual;
+    }
+
+    function renderizarTransportes() {
+        const sel = $('selectTipoTransporte');
+        const atual = sel.value;
+        sel.innerHTML = '';
+        cfg.transportes.forEach(t => sel.appendChild(new Option(t, t)));
+        if (atual && cfg.transportes.indexOf(atual) !== -1) sel.value = atual;
+        $('secTransporte').classList.toggle('hidden', cfg.carregada && cfg.transportes.length === 0);
+    }
+
+    function refrescarOcorrencias() {
+        document.querySelectorAll('#occurrences select').forEach(sel => {
+            const atual = sel.value;
+            preencherOcorrencias(sel);
+            if (atual && cfg.ocorrencias.indexOf(atual) !== -1) sel.value = atual;
+        });
+    }
+    function preencherOcorrencias(sel) {
+        sel.innerHTML = '';
+        sel.appendChild(new Option('Selecione a ocorrência', ''));
+        cfg.ocorrencias.forEach(o => sel.appendChild(new Option(o, o)));
+    }
+
+    // se um serviço escolhido saiu da lista, avisa o card
+    function refrescarServicosSelecionados() {
+        document.querySelectorAll('#services .card').forEach(card => {
+            const nome = card.dataset.servico;
+            if (nome && !servMap[nome]) { card.dataset.servico = ''; marcarCard(card, null); }
+            else if (nome) marcarCard(card, servMap[nome]);
+        });
+    }
+
+    // ============================================================
+    //  SERVIÇOS + SELETOR COM BUSCA
+    // ============================================================
+    function marcarCard(card, s) {
+        const b = card.querySelector('.pick');
+        if (s) { b.textContent = s.n; b.classList.add('sel'); card.querySelector('.unit').textContent = s.u; }
+        else { b.textContent = 'Toque para escolher o serviço'; b.classList.remove('sel'); card.querySelector('.unit').textContent = '—'; }
+    }
+
+    function addServico() {
+        const d = el('div', 'card');
+        const pick = el('button', 'pick', 'Toque para escolher o serviço'); pick.type = 'button';
+        pick.onclick = () => abrirPicker(d);
+        const g = el('div', 'grid');
+        const q = el('input'); q.type = 'number'; q.min = '0'; q.step = 'any'; q.placeholder = 'Quantidade'; q.inputMode = 'decimal';
+        g.appendChild(q); g.appendChild(el('div', 'unit', '—'));
+        const rm = el('button', 'btn rm', 'Remover'); rm.type = 'button'; rm.onclick = () => d.remove();
+        d.appendChild(pick); d.appendChild(g); d.appendChild(rm);
+        d.dataset.servico = '';
+        $('services').appendChild(d);
+        return d;
+    }
+
+    let pickerCard = null, pickerCat = 'Todos';
+
+    function abrirPicker(card) {
+        if (!cfg.servicos.length) { alert('A lista de serviços ainda não foi carregada. Verifique a conexão e tente novamente.'); return; }
+        pickerCard = card; pickerCat = 'Todos';
+        $('pSearch').value = '';
+        $('picker').classList.remove('hidden');
+        document.body.classList.add('noscroll');
+        renderChips(); renderLista();
+        setTimeout(() => $('pSearch').focus(), 60);
+    }
+    function fecharPicker() {
+        $('picker').classList.add('hidden');
+        document.body.classList.remove('noscroll');
+        pickerCard = null;
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('picker').classList.contains('hidden')) fecharPicker(); });
+
+    function categorias() {
+        const out = [];
+        cfg.servicos.forEach(s => { if (out.indexOf(s.c) === -1) out.push(s.c); });
+        return out;
+    }
+    function renderChips() {
+        const box = $('pChips'); box.innerHTML = '';
+        ['Todos'].concat(categorias()).forEach(c => {
+            const b = el('button', 'chip' + (c === pickerCat ? ' on' : ''), c); b.type = 'button';
+            b.onclick = () => { pickerCat = c; renderChips(); renderLista(); $('pList').scrollTop = 0; };
+            box.appendChild(b);
+        });
+    }
+    function usadosOutros() {
+        const s = new Set();
+        document.querySelectorAll('#services .card').forEach(c => { if (c !== pickerCard && c.dataset.servico) s.add(c.dataset.servico); });
+        return s;
+    }
+    function maisUsados() {
+        const uso = lsGet(LS.uso, {});
+        return Object.keys(uso).filter(n => servMap[n]).sort((a, b) => uso[b] - uso[a]).slice(0, 6).map(n => servMap[n]);
+    }
+    function renderLista() {
+        const box = $('pList'); box.innerHTML = '';
+        const termos = norm($('pSearch').value).split(' ').filter(Boolean);
+        const usados = usadosOutros();
+        const lista = cfg.servicos.filter(s => (pickerCat === 'Todos' || s.c === pickerCat) && termos.every(t => s._k.indexOf(t) !== -1));
+        if (!lista.length) { box.appendChild(el('div', 'empty', 'Nenhum serviço encontrado. Tente outra palavra ou escolha outra categoria.')); return; }
+
+        const item = s => {
+            const b = el('button', 'pitem'); b.type = 'button';
+            b.appendChild(el('span', 'pn', s.n));
+            const m = el('span', 'pm', s.u + ' · ' + s.c);
+            if (usados.has(s.n)) { b.disabled = true; m.appendChild(document.createTextNode(' · ')); m.appendChild(el('span', 'tag', 'já adicionado')); }
+            b.appendChild(m);
+            b.onclick = () => escolherServico(s.n);
+            box.appendChild(b);
+        };
+
+        if (!termos.length && pickerCat === 'Todos') {
+            const fav = maisUsados();
+            if (fav.length) { box.appendChild(el('div', 'ghead', '★ Mais usados')); fav.forEach(item); }
+        }
+        if (pickerCat === 'Todos') {
+            categorias().forEach(cat => {
+                const itens = lista.filter(s => s.c === cat);
+                if (!itens.length) return;
+                box.appendChild(el('div', 'ghead', cat));
+                itens.forEach(item);
+            });
+        } else {
+            lista.forEach(item);
+        }
+    }
+    function escolherServico(nome) {
+        if (!pickerCard) return;
+        const card = pickerCard;
+        card.dataset.servico = nome;
+        marcarCard(card, servMap[nome]);
+        card.querySelector('.pick').classList.remove('input-error');
+        fecharPicker();
+        setTimeout(() => card.querySelector('input[type="number"]').focus(), 80);
+    }
+
+    // ============================================================
+    //  OCORRÊNCIAS / TOGGLES
+    // ============================================================
+    function addOcorrencia() {
+        const d = el('div', 'card');
+        const sel = el('select'); preencherOcorrencias(sel);
+        const ta = el('textarea'); ta.placeholder = 'Descrição detalhada do imprevisto (Obrigatório)...'; ta.style.cssText = 'margin-top: 8px; min-height: 60px;';
+        const rm = el('button', 'btn rm', 'Remover'); rm.type = 'button'; rm.onclick = () => d.remove();
+        d.appendChild(sel); d.appendChild(ta); d.appendChild(rm);
+        $('occurrences').appendChild(d);
+    }
+
+    function tog(id, n) {
+        $(id).classList.toggle('hidden', document.querySelector('input[name=' + n + ']:checked').value !== 's');
+    }
+
+    // ============================================================
+    //  FILA DE ENVIO (nada se perde: salva no aparelho antes de enviar)
+    // ============================================================
+    let emEnvio = new Set();
+    let processando = false;
+
+    function filaLer() { return lsGet(LS.fila, []); }
+    function filaSalvar(f) { lsSet(LS.fila, f); atualizarBannerFila(); }
+    function filaAdicionar(item) { const f = filaLer(); f.push(item); filaSalvar(f); }
+    function filaRemover(id) { filaSalvar(filaLer().filter(i => i.id !== id)); }
+
+    function atualizarBannerFila() {
+        const n = filaLer().length;
+        const b = $('fila');
+        if (!n) { b.style.display = 'none'; return; }
+        b.style.display = 'block';
+        b.textContent = '⏳ ' + n + (n === 1 ? ' registro aguardando envio' : ' registros aguardando envio') + ' — toque para tentar agora';
+    }
+
+    // Envia 1 registro e classifica o resultado
+    async function postar(payload) {
+        try {
+            const r = await fetchTimeout(GOOGLE_SCRIPT_URL, {
+                method: 'POST', redirect: 'follow',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload)
+            }, TIMEOUT_ENVIO_MS);
+            const txt = await r.text();
+            let j = null; try { j = JSON.parse(txt); } catch (e) {}
+            if (j && j.ok) return { tipo: 'ok', j };
+            if (j && j.code === 'pin') return { tipo: 'pin', j };
+            if (j && j.code === 'invalid') return { tipo: 'invalido', j };
+            return { tipo: 'tentar', j };           // busy / server / resposta ilegível
+        } catch (err) {
+            return { tipo: 'tentar', erro: err };    // sem conexão / tempo esgotado: não sabemos se chegou
+        }
+    }
+
+    async function enviarItem(item) {
+        if (emEnvio.has(item.id)) return { tipo: 'andamento' };
+        emEnvio.add(item.id);
+        try {
+            item.payload.pin = getPin();
+            const res = await postar(item.payload);
+            if (res.tipo === 'ok') filaRemover(item.id);
+            else if (res.tipo === 'invalido') filaRemover(item.id);
+            else if (res.tipo === 'pin') pedirPin(getPin() ? 'PIN incorreto.' : '');
+            return res;
+        } finally { emEnvio.delete(item.id); }
+    }
+
+    async function processarFila(manual) {
+        if (processando) return;
+        processando = true;
+        try {
+            const f = filaLer();
+            if (!f.length) return;
+            if (manual) showLoading(true, 'Enviando registros pendentes...');
+            for (const item of f) {
+                const res = await enviarItem(item);
+                if (res.tipo === 'pin') break;
+                if (res.tipo === 'tentar' && !manual) break;   // sem conexão: tenta de novo depois
+            }
+            if (manual && !filaLer().length) {
+                const t = $('okTitulo');
+                if ($('ok').style.display === 'block') {
+                    t.textContent = '✓ Registro enviado'; t.style.color = '#356852';
+                    $('okTexto').textContent = 'Lançamento gravado com sucesso.';
+                    $('btnReenviar').style.display = 'none';
+                }
+            }
+        } finally {
+            processando = false;
+            showLoading(false);
+            atualizarBannerFila();
+        }
+    }
+
+    window.addEventListener('online', () => processarFila(false));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) processarFila(false); });
+    setInterval(() => processarFila(false), 25000);
+
+    // ============================================================
+    //  ENVIO
+    // ============================================================
+    function fmtQtd(q) { return String(Number(q)); }
+
+    async function enviar() {
+        const btn = $('btnEnviar');
+        if (btn.disabled) return;
+
+        if (!cfg.carregada) return alert('As listas ainda não foram carregadas. Aguarde alguns segundos ou verifique a conexão.');
+
+        const numOS = $('numOS').value.trim();
+        const equipe = $('selectEquipe').value;
+        const responsavel = $('selectResponsavel').value;
+        const data = $('dataAtual').value;
+        const local = $('localRef').value.trim();
+        const demanda = $('selectDemanda').value;
+
+        const inputOS = $('numOS');
+        inputOS.classList.remove('input-error');
+        if (!numOS) { inputOS.classList.add('input-error'); inputOS.focus(); return alert('Preencha o número da Ordem de Serviço (OS).'); }
+        if (!equipe || !responsavel || !data || !local || !demanda) return alert('Preencha todos os campos obrigatórios da seção 1 e 2.');
+
+        // data: não aceita futuro; avisa se muito antiga
+        const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+        const p = data.split('-');
+        const dt = new Date(+p[0], +p[1] - 1, +p[2]);
+        if (dt > hoje) return alert('A data não pode ser no futuro.');
+        const dias = Math.round((hoje - dt) / 86400000);
+        if (dias > DIAS_RETROATIVO_AVISO && !confirm('A data informada é de ' + dias + ' dias atrás. Está correta?')) return;
+
+        // serviços
+        const cards = document.querySelectorAll('#services .card');
+        if (cards.length === 0) return alert('Adicione pelo menos um serviço.');
+        const servicos = [], nomesUsados = [];
+        let invalido = false;
+        cards.forEach(card => {
+            const nome = card.dataset.servico;
+            const qtd = card.querySelector('input[type="number"]');
+            const pk = card.querySelector('.pick');
+            pk.classList.remove('input-error'); qtd.classList.remove('input-error');
+            if (!nome) { invalido = true; pk.classList.add('input-error'); return; }
+            const v = parseFloat(qtd.value);
+            if (!(v > 0)) { invalido = true; qtd.classList.add('input-error'); return; }
+            servicos.push(nome + ' (' + fmtQtd(v) + ' ' + ((servMap[nome] && servMap[nome].u) || 'unidade') + ')');
+            nomesUsados.push(nome);
+        });
+        if (invalido) return alert('Em cada serviço, escolha o serviço e informe a quantidade.');
+
+        // ocorrências
+        const ocorrencias = [];
+        const houveImprevisto = document.querySelector('input[name="i"]:checked').value === 's';
+        if (houveImprevisto) {
+            const cardsOcc = document.querySelectorAll('#occurrences .card');
+            if (cardsOcc.length === 0) return alert('Você marcou que houve imprevisto. Adicione pelo menos uma ocorrência ou altere para "Não".');
+            let semTipo = false, semDesc = false;
+            cardsOcc.forEach(card => {
+                const s = card.querySelector('select'), t = card.querySelector('textarea');
+                s.classList.remove('input-error'); t.classList.remove('input-error');
+                const tipo = s.value, desc = t.value.trim();
+                if (!tipo) { semTipo = true; s.classList.add('input-error'); }
+                if (!desc) { semDesc = true; t.classList.add('input-error'); }
+                ocorrencias.push(tipo + ': ' + desc.replace(/\|/g, '/').replace(/\s+/g, ' '));
+            });
+            if (semTipo) return alert('Selecione o tipo para todas as ocorrências adicionadas.');
+            if (semDesc) return alert('Por favor, detalhe a descrição do imprevisto na ocorrência selecionada.');
+        }
+
+        // transporte
+        let transporte = 'Não';
+        if (document.querySelector('input[name="tr"]:checked').value === 's') {
+            const tipo = $('selectTipoTransporte').value;
+            const v = parseInt($('qtdViagens').value, 10);
+            if (!tipo) return alert('Selecione o tipo de transporte.');
+            if (!(v >= 1)) return alert('Informe a quantidade de viagens (mínimo 1).');
+            transporte = tipo + ' (' + v + (v === 1 ? ' viagem)' : ' viagens)');
+        }
+
+        const item = {
+            id: novoId(),
+            criadoEm: Date.now(),
+            payload: {
+                id: null,
+                ordemServico: numOS, equipe: equipe, responsavel: responsavel, data: data, local: local, demanda: demanda,
+                servicos: servicos.join(' | '),
+                ocorrencias: houveImprevisto ? ocorrencias.join(' | ') : 'Nenhuma',
+                transporte: transporte,
+                observacoes: $('obsGerais').value,
+                versaoApp: APP_VERSAO
+            }
+        };
+        item.payload.id = item.id;
+
+        // 1) guarda no aparelho ANTES de enviar (se algo falhar, nada se perde)
+        btn.disabled = true; btn.textContent = 'Enviando...';
+        filaAdicionar(item);
+        lsSet(LS.ultimo, { equipe: equipe, responsavel: responsavel });
+        const uso = lsGet(LS.uso, {}); nomesUsados.forEach(n => uso[n] = (uso[n] || 0) + 1); lsSet(LS.uso, uso);
+
+        // 2) envia e lê a resposta real do servidor
+        showLoading(true, 'Enviando registro...');
+        const res = await enviarItem(item);
+        showLoading(false);
+
+        if (res.tipo === 'invalido') {
+            btn.disabled = false; btn.textContent = 'Enviar registro';
+            return alert((res.j && res.j.message) || 'O servidor recusou o registro. Confira os dados.');
+        }
+
+        $('form').style.display = 'none';
+        $('ok').style.display = 'block';
+        window.scrollTo(0, 0);
+        if (res.tipo === 'ok') {
+            $('okTitulo').textContent = '✓ Registro enviado';
+            $('okTexto').textContent = 'Lançamento gravado com sucesso.';
+            $('btnReenviar').style.display = 'none';
+        } else {
+            $('okTitulo').textContent = '⏳ Registro guardado';
+            $('okTitulo').style.color = '#9a3412';
+            $('okTexto').textContent = 'Não conseguimos confirmar o envio agora (sinal fraco ou servidor lento). Seus dados estão salvos neste aparelho e serão reenviados automaticamente. Não precisa lançar de novo.';
+            $('btnReenviar').style.display = 'block';
+        }
+    }
+
+    // ============================================================
+    //  INÍCIO
+    // ============================================================
+    (function iniciar() {
+        try {
+            const h = new Date();
+            $('dataAtual').value = h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0') + '-' + String(h.getDate()).padStart(2, '0');
+        } catch (e) {}
+        addServico();
+        atualizarBannerFila();
+        carregarConfig().then(() => processarFila(false));
+    })();
+</script>
+</body>
+</html>
