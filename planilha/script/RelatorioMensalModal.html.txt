@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, 'Segoe UI', Roboto, Arial, sans-serif; color: #1f2a22; background: #ffffff; font-size: 13px; }
+  .bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 18px; background: #f4f6f4; border-bottom: 1px solid #e1e7e2; }
+  .bar .info { color: #33413a; }
+  .acoes { display: flex; gap: 6px; }
+  button { font: inherit; cursor: pointer; }
+  .icon { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #cfd8d1; border-radius: 7px; background: #fff; color: #3a5940; padding: 0; }
+  .prim { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 1px solid #3a5940; border-radius: 7px; background: #3a5940; color: #fff; font-weight: 600; }
+  .icon:hover { background: #f0f5f1; } .prim:hover { background: #2f4a35; }
+  main { padding: 16px 18px 24px; display: flex; flex-direction: column; gap: 18px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 11px; font-weight: 700; color: #3a5940; text-transform: uppercase; letter-spacing: .5px; padding: 7px 6px; border-bottom: 2px solid #3a5940; }
+  td { padding: 7px 6px; border-bottom: 1px solid #eef2ef; }
+  .r { text-align: right; } .muted { color: #5b6b5f; }
+  .vazio { color: #8a978d; padding: 8px 6px; }
+  .obs { font-size: 11px; color: #8a3a0a; }
+  .total { display: flex; justify-content: flex-end; gap: 22px; padding-top: 6px; }
+  .total b { font-size: 16px; }
+  @media print { .acoes { display: none; } .bar { position: static; } }
+</style>
+</head>
+<body>
+<div class="bar">
+  <span class="info" id="info"></span>
+  <div class="acoes">
+    <button class="icon" title="Expandir" aria-label="Expandir janela" onclick="alternar()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+    <button class="prim" onclick="window.print()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></svg>Imprimir</button>
+  </div>
+</div>
+<main id="m"></main>
+<script>
+  var dados = <?!= dadosJson ?>;
+  var grande = false;
+  function alternar() {
+    grande = !grande;
+    var w = grande ? Math.max(1000, Math.min(screen.availWidth - 80, 1700)) : 1000;
+    var h = grande ? Math.max(700, Math.min(screen.availHeight - 140, 1100)) : 700;
+    google.script.host.setWidth(w); google.script.host.setHeight(h);
+  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function tabela(titulo, lista, vazio) {
+    var h = '<section><table><thead><tr><th>' + titulo + '</th><th class="r" style="width:130px">Quantidade</th><th class="r" style="width:110px">Pontos</th></tr></thead><tbody>';
+    h += lista.length ? lista.map(function (i) { return '<tr><td>' + esc(i.desc) + '</td><td class="r muted">' + esc(i.qtd) + '</td><td class="r"><b>' + esc(i.pontos) + '</b></td></tr>'; }).join('')
+      : '<tr><td colspan="3" class="vazio">' + vazio + '</td></tr>';
+    return h + '</tbody></table></section>';
+  }
+  (function () {
+    var d = dados;
+    document.getElementById('info').innerHTML = esc(d.equipe) + ' · ' + esc(d.periodo) + ' · <b>' + d.os + ' OS</b> · <b>' + esc(d.total) + ' pontos</b>';
+    var h = tabela('Serviços', d.servicos, 'Nenhum serviço no mês.') + tabela('Ocorrências', d.ocorrencias, 'Nenhuma ocorrência no mês.') + tabela('Transportes', d.transportes, 'Nenhum transporte no mês.');
+    h += '<section><table><thead><tr><th>Comissão por técnico</th><th class="r" style="width:70px">Dias</th><th class="r" style="width:100px">Pontos</th><th style="width:120px">Faixa</th><th class="r" style="width:110px">Comissão</th></tr></thead><tbody>';
+    h += d.comissao.length ? d.comissao.map(function (p) { return '<tr><td><b>' + esc(p.nome) + '</b>' + (p.obs ? '<div class="obs">' + esc(p.obs) + '</div>' : '') + '</td><td class="r">' + p.dias + '</td><td class="r">' + esc(p.pontos) + '</td><td class="muted">' + esc(p.faixa) + '</td><td class="r"><b>' + esc(p.valor) + '</b></td></tr>'; }).join('')
+      : '<tr><td colspan="5" class="vazio">Sem técnicos nesta equipe.</td></tr>';
+    h += '</tbody></table></section><div class="total"><span>Total da equipe <b>' + esc(d.total) + ' pontos</b></span></div>';
+    document.getElementById('m').innerHTML = h;
+  })();
+</script>
+</body>
+</html>

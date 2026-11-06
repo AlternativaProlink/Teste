@@ -119,6 +119,24 @@
         .exemplos { background: var(--verde-claro); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: var(--txt2); line-height: 1.5; margin-top: 10px; }
         .exemplos b { color: var(--verde); }
 
+        /* anotar no caminho */
+        .foot-row { display: grid; grid-template-columns: 1fr 1.35fr; gap: 8px; }
+        .foot-row.so-enviar, .foot-row:has(.anot-btn.hidden) { grid-template-columns: 1fr; }
+        .anot-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 14px 8px; font-size: 13px; white-space: nowrap; }
+        .anot-btn svg { width: 17px; height: 17px; flex: 0 0 auto; }
+        .gps { display: flex; align-items: center; gap: 8px; margin-top: 12px; background: var(--verde-claro); color: var(--verde-esc); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+        .gps-dot { width: 10px; height: 10px; border-radius: 50%; background: #94a3b8; flex: 0 0 auto; }
+        .gps.ok .gps-dot { background: #16a34a; } .gps.err .gps-dot { background: #dc2626; }
+        .gps.busy .gps-dot { animation: pisca 1s infinite; } @keyframes pisca { 50% { opacity: .3; } }
+        #anotBox { margin: 4px 0 10px; }
+        .anot-item { background: var(--aviso-bg); border: 1px solid #fed7aa; border-radius: 10px; padding: 12px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 8px; }
+        .anot-item b { color: var(--aviso); }
+        .anot-item .meta { font-size: 13px; color: var(--txt2); line-height: 1.4; }
+        .anot-item .acoes { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+        .anot-item .incluir { background: var(--aviso); color: #fff; }
+        .anot-item .descartar { background: #fff; color: var(--muted); border: 1px solid var(--borda); padding: 0 14px; }
+        .oc-gps { font-size: 12px; color: var(--verde); font-weight: 600; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+
         /* rodapé fixo com o botão de enviar */
         .footer-bar { position: sticky; bottom: 0; z-index: 40; background: rgba(255,255,255,.96); backdrop-filter: blur(6px); padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--borda); box-shadow: 0 -4px 14px rgba(0,0,0,.06); }
 
@@ -262,6 +280,7 @@
                 <label><input type="radio" name="i" value="n" checked onchange="togImprevisto()"><span>Não</span></label>
                 <label><input type="radio" name="i" value="s" onchange="togImprevisto()"><span>Sim</span></label>
             </div>
+            <div id="anotBox" class="hidden"></div>
             <div id="ib" class="hidden">
                 <div id="occurrences"></div>
                 <button class="btn add" type="button" onclick="addOcorrencia()" style="margin-top:8px">+ Adicionar outra ocorrência</button>
@@ -292,7 +311,11 @@
     </main>
 
     <div class="footer-bar" id="footer">
-        <button class="btn send" id="btnEnviar" type="button" onclick="enviar()">Revisar e enviar</button>
+        <div class="foot-row">
+            <button class="btn add anot-btn" id="btnAnotar" type="button" onclick="abrirAnotacao()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><path d="M12 7v5M9.5 9.5h5"/></svg>Anotar no caminho</button>
+            <button class="btn send" id="btnEnviar" type="button" onclick="enviar()">Revisar e enviar</button>
+        </div>
     </div>
 
     <div id="ok">
@@ -304,6 +327,32 @@
     </div>
 
     <div class="marca">InfraControl<span id="marcaVer"></span></div>
+</div>
+
+<!-- Anotar no caminho -->
+<div id="anotOverlay" class="overlay hidden" onclick="if(event.target===this)fecharAnotacao()">
+    <div class="sheet">
+        <div class="sheet-head">
+            <h3>Anotar no caminho</h3>
+            <button type="button" onclick="fecharAnotacao()" aria-label="Fechar">✕</button>
+        </div>
+        <div class="sheet-body">
+            <div class="lbl req" style="margin-top:0">O que foi encontrado?</div>
+            <button type="button" class="pick" id="anotTipo" onclick="escolherTipoAnotacao()">Toque para escolher o que encontrou</button>
+            <div class="lbl req">Como ficou?</div>
+            <div class="seg sm sit" role="radiogroup" id="anotSit">
+                <label><input type="radio" name="anotSit" value="Resolvido"><span>Resolvido</span></label>
+                <label><input type="radio" name="anotSit" value="Parcial"><span>Parcial</span></label>
+                <label><input type="radio" name="anotSit" value="Pendente" checked><span>Pendente</span></label>
+            </div>
+            <label for="anotRef">Referência <span class="opt">(opcional)</span></label>
+            <input id="anotRef" placeholder="Ex.: perto da ponte, saída da cidade">
+            <div class="gps" id="anotGps"><span class="gps-dot"></span><span id="anotGpsTxt">Marcando o local…</span></div>
+        </div>
+        <div class="sheet-foot" style="grid-template-columns:1fr">
+            <button class="btn send" type="button" onclick="salvarAnotacao()">Salvar anotação</button>
+        </div>
+    </div>
 </div>
 
 <!-- Seletor (serviços e ocorrências) -->
@@ -364,9 +413,9 @@
     const GOOGLE_SCRIPT_URL = EMP.appsScriptUrl;
 
     const APP_NOME = "InfraControl";
-    const APP_VERSAO = "2.2";
+    const APP_VERSAO = "2.3";
     const P = EMP.prefixo || 'ic';
-    const LS = { config: P + '_config_v2', pin: P + '_pin', fila: P + '_fila_v2', uso: P + '_uso_v2', ultimo: P + '_ultimo_v2', rasc: P + '_rascunho_v1', hist: P + '_hist_v1', usoOc: P + '_uso_oc_v1' };
+    const LS = { config: P + '_config_v2', pin: P + '_pin', fila: P + '_fila_v2', uso: P + '_uso_v2', ultimo: P + '_ultimo_v2', rasc: P + '_rascunho_v1', hist: P + '_hist_v1', usoOc: P + '_uso_oc_v1', anot: P + '_anot_v1' };
 
     // aplica a identidade da empresa na tela
     (function aplicarEmpresa() {
@@ -387,8 +436,8 @@
     })();
     const TIMEOUT_ENVIO_MS = 30000;
     const TIMEOUT_CONFIG_MS = 15000;
-    const DIAS_RETROATIVO_AVISO = 7;
-    const DIAS_OS_REPETIDA = 30;
+    // opções que vêm da aba Configurações da planilha (com valores padrão)
+    let opcoesApp = { anotar: true, transporte: true, retro: 7, osRep: 30 };
     const DIAS_HISTORICO = 7;
 
     // ============================================================
@@ -444,6 +493,10 @@
         cfg.servicos = (j.servicos || []).map(s => ({ n: s.n, c: s.c || 'Outros', u: s.u || 'unidade', _k: norm(s.n + ' ' + (s.c || '')) }));
         cfg.ocorrencias = j.ocorrencias || [];
         cfg.transportes = j.transportes || [];
+        const a = j.app || {};
+        opcoesApp = { anotar: a.anotarNoCaminho !== false, transporte: a.mostrarTransporte !== false,
+                      retro: Number(a.diasRetroativo) || 7, osRep: Number(a.diasOSRepetida) || 30 };
+        $('btnAnotar').classList.toggle('hidden', !opcoesApp.anotar);
         cfg.carregada = true;
         servMap = {}; cfg.servicos.forEach(s => servMap[s.n] = s);
 
@@ -549,7 +602,7 @@
         sel.innerHTML = '';
         cfg.transportes.forEach(t => sel.appendChild(new Option(t, t)));
         if (atual && cfg.transportes.indexOf(atual) !== -1) sel.value = atual;
-        $('secTransporte').classList.toggle('hidden', cfg.carregada && cfg.transportes.length === 0);
+        $('secTransporte').classList.toggle('hidden', cfg.carregada && (cfg.transportes.length === 0 || !opcoesApp.transporte));
     }
 
     // se um serviço escolhido saiu da lista, limpa o card
@@ -658,6 +711,7 @@
         if (!$('picker').classList.contains('hidden')) fecharPicker();
         else if (!$('resumo').classList.contains('hidden')) fecharResumo(false);
         else if (!$('historico').classList.contains('hidden')) fecharHistorico();
+        else if (!$('anotOverlay').classList.contains('hidden')) fecharAnotacao();
     });
 
     function categorias() {
@@ -816,6 +870,11 @@
             if (e.target.type === 'radio') e.target.closest('.seg').classList.remove('input-error');
         });
 
+        if (dados.lat && dados.lng) {
+            d.dataset.lat = dados.lat; d.dataset.lng = dados.lng; d.dataset.acc = dados.acc || '';
+            const g = el('div', 'oc-gps', 'Local marcado no caminho' + (dados.acc ? ' (± ' + Math.round(dados.acc) + ' m)' : '') + (dados.hora ? ' · ' + dados.hora : ''));
+            local.insertAdjacentElement('afterend', g);
+        }
         $('occurrences').appendChild(d);
         if (dados.tipo) { d.dataset.tipo = dados.tipo; marcarTipoOc(d, dados.tipo); } else marcarTipoOc(d, '');
         (dados.servicos || []).forEach(s => criarServico(lista, s.n, s.q));
@@ -857,7 +916,7 @@
             if (!desc) { ta.classList.add('input-error'); erro = erro || 'Descreva o que foi encontrado e o que foi feito em cada ocorrência.'; }
             const servs = lerServicos(card.querySelector('.oc-lista'));
             if (servs === null) erro = erro || 'Nos serviços da ocorrência, escolha o serviço e informe a quantidade.';
-            out.push({ tipo, quando, situacao, local, desc, servicos: servs || [], card });
+            out.push({ tipo, quando, situacao, local, desc, servicos: servs || [], card, lat: card.dataset.lat || '', lng: card.dataset.lng || '', acc: card.dataset.acc || '' });
         });
         return { lista: out, erro };
     }
@@ -902,7 +961,8 @@
             ocorrencias: [...document.querySelectorAll('#occurrences .oc')].map(c => {
                 const id = c.querySelector('input[name^="quando_"]').name.slice(7);
                 return { tipo: c.dataset.tipo || '', quando: valorSeg(c, 'quando_' + id), situacao: valorSeg(c, 'sit_' + id),
-                         local: c.querySelector('.oc-local').value, desc: c.querySelector('.oc-desc').value, servicos: servs(c.querySelector('.oc-lista')) };
+                         local: c.querySelector('.oc-local').value, desc: c.querySelector('.oc-desc').value, servicos: servs(c.querySelector('.oc-lista')),
+                         lat: c.dataset.lat || '', lng: c.dataset.lng || '', acc: c.dataset.acc || '' };
             }),
             tr: document.querySelector('input[name="tr"]:checked').value,
             trTipo: $('selectTipoTransporte').value, trQtd: $('qtdViagens').value,
@@ -955,6 +1015,77 @@
         semRascunho = true; clearTimeout(rascT);
         lsDel(LS.rasc);
         location.reload();
+    }
+
+    // ============================================================
+    //  ANOTAR NO CAMINHO (marca o ponto do GPS na hora, sem abrir mapa)
+    // ============================================================
+    let anotAtual = null;
+    function anotLer() { return lsGet(LS.anot, []); }
+    function anotSalvar(l) { lsSet(LS.anot, l); renderAnotacoes(); }
+    function abrirAnotacao() {
+        if (!cfg.ocorrencias.length) return toast('A lista de ocorrências ainda não foi carregada.', true);
+        anotAtual = { id: novoId(), tipo: '', lat: null, lng: null, acc: null, criadoEm: Date.now() };
+        $('anotTipo').textContent = 'Toque para escolher o que encontrou'; $('anotTipo').classList.remove('sel', 'input-error');
+        $('anotRef').value = '';
+        document.querySelector('input[name="anotSit"][value="Pendente"]').checked = true;
+        $('anotOverlay').classList.remove('hidden'); document.body.classList.add('noscroll');
+        capturarLocal();
+    }
+    function fecharAnotacao() { $('anotOverlay').classList.add('hidden'); document.body.classList.remove('noscroll'); anotAtual = null; }
+    function escolherTipoAnotacao() {
+        abrirPicker({ modo: 'oc', onEscolher: n => { if (!anotAtual) return; anotAtual.tipo = n; $('anotTipo').textContent = n; $('anotTipo').classList.add('sel'); $('anotTipo').classList.remove('input-error'); document.body.classList.add('noscroll'); } });
+    }
+    function capturarLocal() {
+        const box = $('anotGps'), txt = $('anotGpsTxt');
+        box.className = 'gps busy'; txt.textContent = 'Marcando o local…';
+        if (!('geolocation' in navigator)) { box.className = 'gps err'; txt.textContent = 'Este celular não informa a localização. Use a referência.'; return; }
+        const alvo = anotAtual;
+        navigator.geolocation.getCurrentPosition(p => {
+            if (anotAtual !== alvo) return;
+            alvo.lat = +p.coords.latitude.toFixed(6); alvo.lng = +p.coords.longitude.toFixed(6); alvo.acc = p.coords.accuracy;
+            box.className = 'gps ok'; txt.textContent = 'Local marcado · precisão de ± ' + Math.round(p.coords.accuracy) + ' m · ' + hhmm(Date.now());
+        }, err => {
+            if (anotAtual !== alvo) return;
+            box.className = 'gps err';
+            txt.textContent = err.code === 1 ? 'Localização bloqueada. Libere nas permissões do navegador ou use a referência.' : 'Não deu para marcar o local agora. Salve com a referência.';
+        }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 20000 });
+    }
+    function salvarAnotacao() {
+        if (!anotAtual) return;
+        if (!anotAtual.tipo) { $('anotTipo').classList.add('input-error'); return toast('Escolha o que foi encontrado.', true); }
+        const sit = document.querySelector('input[name="anotSit"]:checked');
+        const item = Object.assign({}, anotAtual, { situacao: sit ? sit.value : 'Pendente', ref: $('anotRef').value.trim(), hora: hhmm(anotAtual.criadoEm) });
+        const l = anotLer(); l.push(item); anotSalvar(l);
+        fecharAnotacao();
+        toast('✓ Anotação salva. Inclua no registro quando for preencher.');
+    }
+    function renderAnotacoes() {
+        const box = $('anotBox'), l = anotLer();
+        box.innerHTML = '';
+        box.classList.toggle('hidden', !l.length);
+        l.forEach(a => {
+            const it = el('div', 'anot-item');
+            it.appendChild(el('b', null, 'Anotado no caminho · ' + a.hora));
+            it.appendChild(el('div', 'meta', a.tipo + ' · ' + a.situacao + (a.ref ? ' · ' + a.ref : '') + (a.lat ? ' · local marcado' : ' · sem local')));
+            const ac = el('div', 'acoes');
+            const inc = el('button', 'btn incluir', 'Incluir neste registro'); inc.type = 'button'; inc.onclick = () => incluirAnotacao(a.id);
+            const des = el('button', 'btn descartar', 'Descartar'); des.type = 'button';
+            des.onclick = () => { if (confirm('Descartar esta anotação?')) anotSalvar(anotLer().filter(x => x.id !== a.id)); };
+            ac.appendChild(inc); ac.appendChild(des); it.appendChild(ac);
+            box.appendChild(it);
+        });
+    }
+    function incluirAnotacao(id) {
+        const a = anotLer().filter(x => x.id === id)[0]; if (!a) return;
+        document.querySelector('input[name="i"][value="s"]').checked = true;
+        $('ib').classList.remove('hidden');
+        const vazia = [...document.querySelectorAll('#occurrences .oc')].filter(c => !c.dataset.tipo && !c.querySelector('.oc-desc').value.trim())[0];
+        if (vazia) vazia.remove();
+        const card = addOcorrencia({ tipo: a.tipo, quando: 'No deslocamento', situacao: a.situacao, local: a.ref, lat: a.lat, lng: a.lng, acc: a.acc, hora: a.hora });
+        anotSalvar(anotLer().filter(x => x.id !== id));
+        salvarRascunho();
+        setTimeout(() => irPara(card.querySelector('.oc-desc')), 100);
     }
 
     // ============================================================
@@ -1201,8 +1332,8 @@
 
         // 5) avisos (data antiga, OS repetida neste aparelho)
         const dias = Math.round((hoje - dt) / 86400000);
-        if (dias > DIAS_RETROATIVO_AVISO && !confirm('A data informada é de ' + dias + ' dias atrás. Está correta?')) return;
-        const limOS = Date.now() - DIAS_OS_REPETIDA * 86400000;
+        if (dias > opcoesApp.retro && !confirm('A data informada é de ' + dias + ' dias atrás. Está correta?')) return;
+        const limOS = Date.now() - opcoesApp.osRep * 86400000;
         const rep = histLer().filter(h => h.criadoEm > limOS && norm(h.os) === norm(numOS)).sort((a, b) => b.criadoEm - a.criadoEm)[0];
         if (rep && !confirm('A OS "' + numOS + '" já foi lançada neste aparelho em ' + new Date(rep.criadoEm).toLocaleDateString('pt-BR') + ' às ' + hhmm(rep.criadoEm) + '.\n\nDeseja lançar de novo mesmo assim?')) return;
 
@@ -1237,7 +1368,7 @@
                 servicosOS: servicosOS.map(txtServ).join(' | '),
                 servicosOcorrencias: servicosOc.flat().map(txtServ).join(' | '),
                 ocorrenciasPendentes: pendentes,
-                ocorrenciasDetalhe: JSON.stringify(ocorrencias.map(o => ({ tipo: o.tipo, quando: o.quando, situacao: o.situacao, local: o.local, descricao: o.desc, servicos: o.servicos })))
+                ocorrenciasDetalhe: JSON.stringify(ocorrencias.map(o => ({ tipo: o.tipo, quando: o.quando, situacao: o.situacao, local: o.local, descricao: o.desc, servicos: o.servicos, lat: o.lat ? Number(o.lat) : undefined, lng: o.lng ? Number(o.lng) : undefined, precisao: o.acc ? Math.round(Number(o.acc)) : undefined })))
             }
         };
         item.payload.id = item.id;
@@ -1290,6 +1421,7 @@
         atualizarVazio();
         atualizarBannerFila();
         atualizarContHist();
+        renderAnotacoes();
         carregarConfig().then(() => processarFila(false));
 
         // app instalável / abre sem internet

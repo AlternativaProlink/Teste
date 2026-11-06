@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, 'Segoe UI', Roboto, Arial, sans-serif; color: #1f2a22; background: #ffffff; font-size: 13px; }
+  .bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 18px; background: #f4f6f4; border-bottom: 1px solid #e1e7e2; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { background: #e8efe9; color: #26402c; font-weight: 600; font-size: 12px; padding: 4px 10px; border-radius: 999px; }
+  .acoes { display: flex; gap: 6px; }
+  button { font: inherit; cursor: pointer; }
+  .icon { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #cfd8d1; border-radius: 7px; background: #fff; color: #3a5940; padding: 0; }
+  .prim { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 1px solid #3a5940; border-radius: 7px; background: #3a5940; color: #fff; font-weight: 600; }
+  .icon:hover { background: #f0f5f1; } .prim:hover { background: #2f4a35; }
+  main { padding: 16px 18px 80px; display: flex; flex-direction: column; gap: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .k { display: flex; flex-direction: column; gap: 2px; }
+  .k span { font-size: 11px; font-weight: 600; color: #6b7a6f; text-transform: uppercase; letter-spacing: .4px; }
+  .k b { font-weight: 600; }
+  h3 { margin: 0 0 4px; font-size: 11px; font-weight: 700; color: #3a5940; text-transform: uppercase; letter-spacing: .5px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #eef2ef; }
+  .row .q { color: #5b6b5f; } .row .p { font-weight: 700; min-width: 70px; text-align: right; }
+  .oc { border: 1px solid #e1e7e2; padding: 10px 12px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 5px; }
+  .oc .t { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #eef2ef; }
+  .ok { background: #e3f1e7; color: #2f7d4a; } .parcial { background: #fef3c7; color: #b45309; } .pendente { background: #ffedd5; color: #c2410c; }
+  .muted { color: #5b6b5f; }
+  .alerta { background: #fff4ec; border: 1px solid #f3cfb4; color: #8a3a0a; padding: 8px 12px; font-size: 12px; }
+  footer { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: flex-end; gap: 20px; padding: 12px 18px; border-top: 1px solid #e1e7e2; background: #f4f6f4; }
+  footer b { font-size: 16px; }
+  a { color: #3a5940; font-weight: 600; }
+  @media print { .bar .acoes { display: none; } footer { position: static; } main { padding-bottom: 0; } }
+</style>
+</head>
+<body>
+<div class="bar">
+  <div class="chips" id="chips"></div>
+  <div class="acoes">
+    <button class="icon" id="exp" title="Expandir" aria-label="Expandir janela" onclick="alternar()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+    <button class="prim" onclick="window.print()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></svg>Imprimir</button>
+  </div>
+</div>
+<main id="m"></main>
+<footer id="f"></footer>
+<script>
+  var dados = <?!= dadosJson ?>;
+  var grande = false;
+  function alternar() {
+    grande = !grande;
+    var w = grande ? Math.max(1000, Math.min(screen.availWidth - 80, 1700)) : 1000;
+    var h = grande ? Math.max(680, Math.min(screen.availHeight - 140, 1100)) : 680;
+    google.script.host.setWidth(w); google.script.host.setHeight(h);
+  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function k(l, v) { return '<div class="k"><span>' + l + '</span><b>' + esc(v || '—') + '</b></div>'; }
+  (function () {
+    var d = dados;
+    document.getElementById('chips').innerHTML = '<span class="chip">' + esc(d.data) + '</span><span class="chip">' + esc(d.demanda) + '</span>';
+    var h = '<div class="grid">' + k('Responsável', d.resp) + k('Local', d.local) + k('Transporte', d.transporte && d.transporte !== 'Não' ? d.transporte : 'Não') + '</div>';
+    if (d.alerta) h += '<div class="alerta">' + esc(d.alerta) + '</div>';
+    h += '<section><h3>Serviços</h3>';
+    h += d.servicos.length ? d.servicos.map(function (s) { return '<div class="row"><span>' + esc(s.nome) + '</span><span class="q">' + esc(s.qtd) + '</span><span class="p">' + esc(s.pontos) + ' pts</span></div>'; }).join('') : '<p class="muted">Nenhum serviço.</p>';
+    h += '</section>';
+    if (d.ocorrencias.length) {
+      h += '<section><h3>Imprevistos e fora da OS</h3>' + d.ocorrencias.map(function (o) {
+        var s = (o.situacao || '').toLowerCase(), cls = s === 'resolvido' ? 'ok' : (s === 'parcial' ? 'parcial' : (s === 'pendente' ? 'pendente' : ''));
+        var mapa = (o.lat && o.lng) ? ' · <a href="https://www.google.com/maps?q=' + o.lat + ',' + o.lng + '" target="_blank">ver no mapa</a>' : '';
+        return '<div class="oc"><div class="t"><b>' + esc(o.tipo) + '</b><span>' + (o.quando ? '<span class="tag">' + esc(o.quando) + '</span> ' : '') + (o.situacao ? '<span class="tag ' + cls + '">' + esc(o.situacao) + '</span>' : '') + '</span></div>'
+          + '<span class="muted">' + esc([o.local, o.descricao].filter(String).join(' · ')) + mapa + '</span></div>';
+      }).join('') + '</section>';
+    }
+    if (d.obs) h += '<section><h3>Observações</h3><p class="muted" style="margin:0">' + esc(d.obs) + '</p></section>';
+    document.getElementById('m').innerHTML = h;
+    document.getElementById('f').innerHTML = '<span>Equipe <b style="font-size:13px">' + esc(d.equipe) + '</b></span><span>Pontos <b>' + esc(d.pontos) + '</b></span>';
+  })();
+</script>
+</body>
+</html>

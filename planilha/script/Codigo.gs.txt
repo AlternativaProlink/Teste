@@ -1,0 +1,1357 @@
+/**
+ * ============================================================
+ *  InfraControl — Apps Script da planilha (v3)
+ * ============================================================
+ *  App dos técnicos:
+ *    doGet  → entrega listas (equipes já com a escala do dia), serviços, ocorrências,
+ *             transportes, demandas e opções do app (aba Configurações).
+ *    doPost → grava o registro em Registros, calcula os pontos, gera alertas,
+ *             evita duplicidade e atualiza Painel e Relatório.
+ *
+ *  Abas:
+ *    Painel ................ dashboard (quadros escolhidos em Configurações)
+ *    Cadastros_Pontos ...... serviços / ocorrências / transportes / demandas (dados a partir da linha 8)
+ *    Cadastro_Metas ........ equipes (linha 8+), regras da comissão, faixas e escala
+ *    Relatorio_Individual .. relatório da equipe no mês, comissão por técnico, lupa por OS
+ *    Registros ............. tudo o que chega do app (linha 8+)
+ *    Configurações ......... empresa, app, quadros do painel, pontuação por medida
+ *
+ *  Menu "InfraControl" → Instalar / reaplicar visual (rode uma vez após colar este código).
+ */
+
+var CFG = {
+  ABA_REGISTROS: 'Registros',
+  ABA_CAD: 'Cadastros_Pontos',
+  ABA_EQUIPES: 'Cadastro_Metas',
+  ABA_RELATORIO: 'Relatorio_Individual',
+  ABA_PAINEL: 'Painel',
+  ABA_CONFIG: 'Configurações',
+
+  LINHA_CAD: 8,
+  LINHA_EQUIPES: 8,
+  LINHA_REG: 8,
+
+  SERV:   { nome: 7,  categoria: 8, medida: 9,  valor: 10, pontos: 11, ativo: 12 },
+  OCC:    { nome: 14, medida: 15,   valor: 16,  pontos: 17, ativo: 18 },
+  TRANSP: { nome: 20, medida: 21,   valor: 22,  pontos: 23, ativo: 24 },
+  DEM:    { nome: 26, ativo: 27 },
+
+  EQ: { nome: 7, meta: 8, membrosDe: 9, membrosAte: 10, ativa: 11 },
+  EQ_MAX_LINHAS: 14,
+  ESCALA: { linha: 25, qtd: 50 },       // Cadastro_Metas G25:O74
+
+  REG_COLS: 15,                         // G..U
+  REG_COL_PONTOS: 17, REG_COL_COMISSAO: 18, REG_COL_ID: 19, REG_COL_ALERTA: 20, REG_COL_DETALHE: 21
+};
+
+var COR = {
+  verde: '#3a5940', verdeAtivo: '#577a5d', verdeEsc: '#26402c', fundo: '#f4f6f4', branco: '#ffffff',
+  borda: '#e1e7e2', linha: '#eef2ef', texto: '#1f2a22', cinza: '#5b6b5f', cinzaClaro: '#8a978d',
+  laranja: '#c2410c', ambar: '#b7791f', verdeOk: '#2f7d4a', azul: '#1d5a8a', faixaCinza: '#d9d9d9',
+  bordaTitulo: '#a2b08a', cabecalho: '#f3f3f3', editavel: '#fffbea'
+};
+var FONTE = 'Inter';
+var MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+/* ============================================================
+ *  Utilidades
+ * ============================================================ */
+function json_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+function norm_(s) {
+  return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+}
+function ativo_(v) {
+  var n = norm_(v);
+  return !(n === 'nao' || n === 'n' || n === 'inativo' || n === 'inativa' || n === 'false' || n === '0');
+}
+function num_(v) {
+  if (v === '' || v === null || v === undefined) return null;
+  if (typeof v === 'number') return v;
+  var s = String(v).replace(/[^\d,.\-]/g, '');
+  if (s.indexOf(',') !== -1) s = s.replace(/\./g, '').replace(',', '.');
+  var n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+function seguro_(v) {
+  var s = String(v == null ? '' : v);
+  return /^[=+\-@]/.test(s) ? "'" + s : s;
+}
+function ss_() { return SpreadsheetApp.getActiveSpreadsheet(); }
+function aba_(nome) { return ss_().getSheetByName(nome); }
+function lerBloco_(sheet, primeiraLinha, colIni, nCols) {
+  var ultima = sheet.getLastRow();
+  if (ultima < primeiraLinha) return [];
+  return sheet.getRange(primeiraLinha, colIni, ultima - primeiraLinha + 1, nCols).getValues();
+}
+function chaveDia_(d) { return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+function soDia_(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function fmtNum_(n) {
+  var r = Math.round(n * 10) / 10;
+  var s = (Math.abs(r % 1) > 0 ? r.toFixed(1) : String(Math.round(r))).replace('.', ',');
+  return s.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+function fmtR_(n) { return 'R$ ' + Number(n || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+function fmtData_(d) { return Utilities.formatDate(d, Session.getScriptTimeZone(), 'dd/MM/yyyy'); }
+function ts_(o) { return SpreadsheetApp.newTextStyle()
+  .setFontFamily(FONTE).setFontSize(o.size || 10).setBold(!!o.bold).setForegroundColor(o.color || COR.texto).build(); }
+
+/* ============================================================
+ *  Configurações (aba)
+ * ============================================================ */
+function nr_(nome) { var r = ss_().getRangeByName(nome); return r; }
+function nrVal_(nome, def) {
+  var r = nr_(nome); if (!r) return def;
+  var v = r.getValue(); return (v === '' || v === null) ? def : v;
+}
+function lerConfig_() {
+  var c = {
+    nome: String(nrVal_('CONF_NOME', 'Pro Link Serviços')),
+    setor: String(nrVal_('CONF_SETOR', 'Infraestrutura')),
+    pin: String(nrVal_('CONF_PIN', '')).trim(),
+    anotar: ativo_(nrVal_('CONF_ANOTAR', 'Sim')),
+    transporte: ativo_(nrVal_('CONF_TRANSP', 'Sim')),
+    diasRetro: num_(nrVal_('CONF_RETRO', 7)) || 7,
+    diasOS: num_(nrVal_('CONF_OSREP', 30)) || 30,
+    periodo: String(nrVal_('CONF_PERIODO', 'Mês atual')),
+    equipePadrao: String(nrVal_('CONF_EQPADRAO', 'Todas as equipes')),
+    quadros: [], medidas: [], ajustes: {}
+  };
+  var q = nr_('CONF_QUADROS');
+  if (q) q.getValues().forEach(function (r) { if (r[1]) c.quadros.push({ ver: r[0] === true, nome: String(r[1]), ordem: num_(r[2]) || 99 }); });
+  if (!c.quadros.length) c.quadros = QUADROS_PADRAO_.map(function (n, i) { return { ver: true, nome: n, ordem: i + 1 }; });
+  var m = nr_('CONF_MEDIDAS');
+  if (m) m.getValues().forEach(function (r) {
+    if (!r[0]) return;
+    c.medidas.push({ chaves: String(r[0]).split('·').map(norm_).filter(String), regra: String(r[5] || ''), mpp: num_(r[6]), bloco: num_(r[7]) });
+  });
+  var a = nr_('CONF_AJUSTES');
+  if (a) a.getValues().forEach(function (r) { if (r[0]) c.ajustes[norm_(r[0])] = (num_(r[5]) === null ? 100 : num_(r[5])); });
+  return c;
+}
+var QUADROS_PADRAO_ = ['Indicadores', 'Serviços mais executados', 'Ocorrências mais frequentes', 'Metas do mês por equipe', 'Pendências para retorno', 'Comissão por técnico (com equipe filtrada)'];
+
+/* ============================================================
+ *  Cadastros e equipes
+ * ============================================================ */
+function lerLista_(sheet, def) {
+  var colIni = 999, colFim = 0, k;
+  for (k in def) { colIni = Math.min(colIni, def[k]); colFim = Math.max(colFim, def[k]); }
+  var linhas = lerBloco_(sheet, CFG.LINHA_CAD, colIni, colFim - colIni + 1);
+  var out = [];
+  for (var i = 0; i < linhas.length; i++) {
+    var nome = String(linhas[i][def.nome - colIni] || '').trim();
+    if (!nome) continue;
+    var item = { nome: nome };
+    for (k in def) if (k !== 'nome') item[k] = linhas[i][def[k] - colIni];
+    item.ativoFlag = ativo_(item.ativo);
+    out.push(item);
+  }
+  return out;
+}
+function lerCadastros_() {
+  var sh = aba_(CFG.ABA_CAD);
+  if (!sh) throw new Error('Aba ' + CFG.ABA_CAD + ' não encontrada');
+  return { servicos: lerLista_(sh, CFG.SERV), ocorrencias: lerLista_(sh, CFG.OCC), transportes: lerLista_(sh, CFG.TRANSP), demandas: lerLista_(sh, CFG.DEM) };
+}
+function lerEquipes_() {
+  var sh = aba_(CFG.ABA_EQUIPES);
+  if (!sh) throw new Error('Aba ' + CFG.ABA_EQUIPES + ' não encontrada');
+  var linhas = sh.getRange(CFG.LINHA_EQUIPES, CFG.EQ.nome, CFG.EQ_MAX_LINHAS, 5).getValues();
+  var out = [];
+  linhas.forEach(function (r) {
+    var nome = String(r[0] || '').trim();
+    if (!nome) return;
+    var membros = [String(r[2] || '').trim(), String(r[3] || '').trim()].filter(String);
+    out.push({ nome: nome, meta: num_(r[1]), membros: membros, ativa: ativo_(r[4]) });
+  });
+  return out;
+}
+function lerEscala_() {
+  var sh = aba_(CFG.ABA_EQUIPES); if (!sh) return [];
+  var v = sh.getRange(CFG.ESCALA.linha, 7, CFG.ESCALA.qtd, 5).getValues();
+  var out = [];
+  v.forEach(function (r) {
+    var tec = String(r[0] || '').trim(), tipo = norm_(r[1]);
+    if (!tec || !tipo || !(r[3] instanceof Date)) return;
+    var ate = (r[4] instanceof Date) ? r[4] : r[3];
+    out.push({ tecnico: tec, tipo: tipo.indexOf('refor') === 0 ? 'reforco' : (tipo.indexOf('ferias') === 0 ? 'ferias' : 'folga'),
+      equipe: String(r[2] || '').trim(), de: soDia_(r[3]), ate: soDia_(ate) });
+  });
+  return out;
+}
+function lerRegrasComissao_() {
+  var teto = num_(nrVal_('EQ_TETO', 200)) || 200;
+  var faixas = [];
+  var r = nr_('EQ_FAIXAS');
+  if (r) r.getValues().forEach(function (x) { var de = num_(x[0]), v = num_(x[2]); if (de !== null && v !== null) faixas.push({ de: de, ate: num_(x[1]), valor: v }); });
+  if (!faixas.length) faixas = [{ de: 800, ate: 899, valor: 75 }, { de: 900, ate: 999, valor: 100 }, { de: 1000, ate: 1199, valor: 150 }, { de: 1200, ate: null, valor: 200 }];
+  faixas.sort(function (a, b) { return a.de - b.de; });
+  return { teto: teto, faixas: faixas };
+}
+// quem trabalha em cada equipe numa data, considerando a escala
+function equipesNaData_(equipes, escala, data) {
+  var d = soDia_(data).getTime(), mapa = {};
+  var fora = {}, reforcos = [];
+  escala.forEach(function (e) {
+    if (d < e.de.getTime() || d > e.ate.getTime()) return;
+    fora[norm_(e.tecnico)] = true;
+    if (e.tipo === 'reforco' && e.equipe) reforcos.push(e);
+  });
+  equipes.forEach(function (t) {
+    mapa[t.nome] = t.membros.filter(function (m) { return !fora[norm_(m)]; }).map(function (m) { return { nome: m, reforco: false }; });
+  });
+  reforcos.forEach(function (e) { if (mapa[e.equipe]) mapa[e.equipe].push({ nome: e.tecnico, reforco: true }); });
+  return mapa;
+}
+
+/* ============================================================
+ *  PIN
+ * ============================================================ */
+function getPin_() {
+  var p = nr_('CONF_PIN');
+  if (p) return String(p.getValue() == null ? '' : p.getValue()).trim();
+  return '';
+}
+function pinValido_(pinRecebido) {
+  var pin = getPin_();
+  return !pin || String(pinRecebido == null ? '' : pinRecebido).trim() === pin;
+}
+
+/* ============================================================
+ *  doGet — listas para o app
+ * ============================================================ */
+function doGet(e) {
+  try {
+    var p = (e && e.parameter) || {};
+    if (!pinValido_(p.pin)) return json_({ ok: false, status: 'error', code: 'pin', message: 'PIN inválido ou não informado.' });
+    var cad = lerCadastros_(), eq = lerEquipes_(), conf = lerConfig_();
+    var hoje = equipesNaData_(eq, lerEscala_(), new Date());
+    var equipes = {}, ordem = [];
+    eq.forEach(function (t) { if (t.ativa) { equipes[t.nome] = (hoje[t.nome] || []).map(function (m) { return m.nome; }); ordem.push(t.nome); } });
+    return json_({
+      ok: true, status: 'success', geradoEm: new Date().toISOString(), pinObrigatorio: !!getPin_(),
+      ordemEquipes: ordem, equipes: equipes,
+      demandas: cad.demandas.filter(function (d) { return d.ativoFlag; }).map(function (d) { return d.nome; }),
+      servicos: cad.servicos.filter(function (s) { return s.ativoFlag; }).map(function (s) {
+        return { n: s.nome, c: String(s.categoria || '').trim() || 'Outros', u: String(s.medida || '').trim() || 'unidade' };
+      }),
+      ocorrencias: cad.ocorrencias.filter(function (o) { return o.ativoFlag; }).map(function (o) { return o.nome; }),
+      transportes: cad.transportes.filter(function (t) { return t.ativoFlag; }).map(function (t) { return t.nome; }),
+      app: { anotarNoCaminho: conf.anotar, mostrarTransporte: conf.transporte, diasRetroativo: conf.diasRetro, diasOSRepetida: conf.diasOS }
+    });
+  } catch (err) {
+    return json_({ ok: false, status: 'error', code: 'server', message: String(err) });
+  }
+}
+
+/* ============================================================
+ *  doPost — recebe um registro
+ * ============================================================ */
+function doPost(e) {
+  var lock = LockService.getScriptLock(), temLock = false, gravou = false, resposta;
+  try {
+    var data = JSON.parse(e.postData.contents);
+    if (!pinValido_(data.pin)) return json_({ ok: false, status: 'error', code: 'pin', message: 'PIN inválido ou não informado.' });
+
+    var ordemServico = data.os || data.nOS || data.numero_os || data.ordemServico || '';
+    var equipe = data.equipe || '', responsavel = data.responsavel || '';
+    var local = data.local || data.cidade || '', demanda = data.demanda || '';
+    var servicos = data.servicos || '', ocorrencias = data.ocorrencias || '';
+    var transporte = data.transporte || '', observacoes = data.observacoes || '';
+    var detalhe = data.ocorrenciasDetalhe || '';
+    var idRegistro = String(data.id || '').trim();
+
+    if (!String(ordemServico).trim() || !equipe || !responsavel || (!servicos && (!ocorrencias || ocorrencias === 'Nenhuma'))) {
+      return json_({ ok: false, status: 'error', code: 'invalid', message: 'Registro incompleto (OS, equipe, responsável e serviços são obrigatórios).' });
+    }
+    var dataFormatada = new Date();
+    if (data.data) {
+      var partes = String(data.data).split('T')[0].split('-');
+      if (partes.length === 3) dataFormatada = new Date(+partes[0], +partes[1] - 1, +partes[2]);
+    }
+    try { lock.waitLock(25000); temLock = true; }
+    catch (le) { return json_({ ok: false, status: 'error', code: 'busy', message: 'Servidor ocupado. Tente novamente.' }); }
+
+    var sheet = aba_(CFG.ABA_REGISTROS);
+    if (!sheet) return json_({ ok: false, status: 'error', code: 'server', message: 'Aba Registros não encontrada' });
+
+    var ultima = Math.max(sheet.getLastRow(), CFG.LINHA_REG);
+    var qtd = ultima - CFG.LINHA_REG + 1;
+    var colH = sheet.getRange(CFG.LINHA_REG, 8, qtd, 1).getValues();
+    var colS = sheet.getRange(CFG.LINHA_REG, CFG.REG_COL_ID, qtd, 1).getValues();
+    if (idRegistro) {
+      for (var j = 0; j < colS.length; j++) {
+        if (String(colS[j][0]).trim() === idRegistro) return json_({ ok: true, status: 'success', duplicate: true, linha: CFG.LINHA_REG + j, message: 'Registro já estava salvo.' });
+      }
+    }
+    var ultimaReal = CFG.LINHA_REG - 1;
+    for (var i = colH.length - 1; i >= 0; i--) { if (colH[i][0] !== '' && colH[i][0] !== null) { ultimaReal = CFG.LINHA_REG + i; break; } }
+    var linha = ultimaReal + 1;
+    if (linha > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), 50);
+
+    var calc = { pontos: 0, alertas: [] };
+    try { calc = calcularPontos_(servicos, ocorrencias, transporte); }
+    catch (ce) { calc.alertas.push('Erro ao calcular pontos: ' + ce); }
+
+    sheet.getRange(linha, 7, 1, CFG.REG_COLS).setValues([[
+      dataFormatada, seguro_(ordemServico), equipe, responsavel, seguro_(local), demanda,
+      seguro_(servicos), seguro_(ocorrencias), seguro_(transporte), seguro_(observacoes),
+      calc.pontos, '', idRegistro, resumoAlertas_(calc.alertas), seguro_(detalhe)
+    ]]);
+    sheet.getRange(linha, CFG.REG_COL_ALERTA).setNote(calc.alertas.join('\n'));
+    sheet.getRange(linha, 7).setNumberFormat('dd/MM/yyyy');
+    SpreadsheetApp.flush();
+    gravou = true;
+    resposta = { ok: true, status: 'success', message: 'Salvo com sucesso!', linha: linha, pontos: calc.pontos, alerta: calc.alertas.join(' | ') };
+  } catch (error) {
+    return json_({ ok: false, status: 'error', code: 'server', message: String(error) });
+  } finally {
+    if (temLock) lock.releaseLock();
+  }
+  if (gravou) {
+    try { atualizarPainel(); } catch (e1) { console.error('Painel: ' + e1); }
+    try { atualizarRelatorio(); } catch (e2) { console.error('Relatório: ' + e2); }
+  }
+  return json_(resposta);
+}
+
+/* ============================================================
+ *  Pontuação
+ * ============================================================ */
+// "Tipo [Quando · Situação] @ local: descrição → Serviços: ..."  ou  "Tipo: descrição"
+function tipoOcorrencia_(txt) {
+  var t = String(txt || '').trim();
+  var cortes = [t.indexOf(' ['), t.indexOf(' @ '), t.indexOf(':')].filter(function (i) { return i > 0; });
+  return (cortes.length ? t.slice(0, Math.min.apply(null, cortes)) : t).trim();
+}
+function situacaoOcorrencia_(txt) {
+  var m = String(txt || '').match(/\[([^\]]*)\]/);
+  if (!m) return '';
+  var p = m[1].split('·').map(function (x) { return x.trim(); });
+  return p[1] || '';
+}
+function quandoOcorrencia_(txt) {
+  var m = String(txt || '').match(/\[([^\]]*)\]/);
+  return m ? (m[1].split('·')[0] || '').trim() : '';
+}
+function partesServico_(txt) {
+  var s = String(txt || '').trim(), nome = s, qtd = 1, un = '';
+  var m = s.match(/^(.*)\s\(\s*([\d.,]+)\s*([^()]*)\)$/);
+  if (m) { nome = m[1].trim(); qtd = num_(m[2]) || 0; un = String(m[3] || '').trim(); }
+  return { nome: nome, qtd: qtd, un: un };
+}
+function regraMedida_(conf, medida) {
+  var n = norm_(medida || 'unidade');
+  for (var i = 0; i < conf.medidas.length; i++) {
+    if (conf.medidas[i].chaves.indexOf(n) !== -1) return conf.medidas[i];
+  }
+  if (n === 'm' || n.indexOf('metro') === 0) {
+    for (var j = 0; j < conf.medidas.length; j++) if (conf.medidas[j].chaves.indexOf('metro') !== -1) return conf.medidas[j];
+    return { regra: 'Por metro', mpp: 40, bloco: 100 };
+  }
+  return null;
+}
+function pontosMetro_(regra, metros) {
+  var mpp = regra.mpp || 40, b = regra.bloco || (norm_(regra.regra).indexOf('os') !== -1 ? 500 : 100);
+  var r = norm_(regra.regra);
+  if (r.indexOf('bloco') !== -1) return Math.floor(metros / b) * (b / mpp);
+  if (r.indexOf('por os') !== -1) return Math.ceil(metros / b) * (b / mpp);
+  return metros / mpp;
+}
+function pontosItem_(item, cadItem, conf, alertas, rotulo) {
+  var medida = String((cadItem && cadItem.medida) || item.un || 'unidade');
+  var regra = regraMedida_(conf, medida);
+  var aj = conf.ajustes[norm_(cadItem ? cadItem.nome : item.nome)];
+  var fator = (aj === undefined ? 100 : aj) / 100;
+  var nm = norm_(medida);
+  if (nm === 'm' || nm.indexOf('metro') === 0) {
+    return pontosMetro_(regra || { regra: 'Por metro', mpp: 40 }, item.qtd) * fator;
+  }
+  var pts = cadItem ? num_(cadItem.pontos) : null;
+  if (pts === null) { alertas.push(rotulo + ' sem pontos: ' + (cadItem ? cadItem.nome : item.nome)); return 0; }
+  if (regra && norm_(regra.regra).indexOf('fixo') !== -1) return pts * fator;
+  return pts * item.qtd * fator;
+}
+function calcularPontos_(servicosTexto, ocorrenciasTexto, transporteTexto, cadCache, confCache) {
+  var cad = cadCache || lerCadastros_(), conf = confCache || lerConfig_();
+  var total = { pontos: 0, alertas: [] };
+  function mapa(lista) { var m = {}; lista.forEach(function (it) { m[norm_(it.nome)] = it; }); return m; }
+  var mServ = mapa(cad.servicos), mOcc = mapa(cad.ocorrencias), mTr = mapa(cad.transportes);
+
+  if (servicosTexto) String(servicosTexto).split('|').forEach(function (parte) {
+    if (!parte.trim()) return;
+    var it = partesServico_(parte), c = mServ[norm_(it.nome)];
+    if (!c) { total.alertas.push('Serviço sem cadastro: ' + it.nome); return; }
+    total.pontos += pontosItem_(it, c, conf, total.alertas, 'Serviço');
+  });
+  if (ocorrenciasTexto && ocorrenciasTexto !== 'Nenhuma') String(ocorrenciasTexto).split('|').forEach(function (parte) {
+    if (!parte.trim()) return;
+    var nome = tipoOcorrencia_(parte), c = mOcc[norm_(nome)];
+    if (!c) { total.alertas.push('Ocorrência sem cadastro: ' + nome); return; }
+    total.pontos += pontosItem_({ nome: nome, qtd: 1 }, c, conf, total.alertas, 'Ocorrência');
+  });
+  if (transporteTexto && transporteTexto !== 'Não' && transporteTexto !== 'Nenhum') {
+    var tx = String(transporteTexto).trim(), nomeT = tx, viagens = 1;
+    var mt = tx.match(/^(.*)\s\(\s*(\d+)\s*viage[mn]/i);
+    if (mt) { nomeT = mt[1].trim(); viagens = parseInt(mt[2], 10) || 1; }
+    var cT = mTr[norm_(nomeT)];
+    if (!cT) total.alertas.push('Transporte sem cadastro: ' + nomeT);
+    else total.pontos += pontosItem_({ nome: nomeT, qtd: viagens }, cT, conf, total.alertas, 'Transporte');
+  }
+  total.pontos = Math.round(total.pontos * 100) / 100;
+  return total;
+}
+function resumoAlertas_(alertas) {
+  if (!alertas || !alertas.length) return '';
+  var semCad = alertas.filter(function (a) { return a.indexOf('sem cadastro') !== -1; }).length;
+  var semPts = alertas.filter(function (a) { return a.indexOf('sem pontos') !== -1; }).length;
+  var outros = alertas.length - semCad - semPts, p = [];
+  if (semPts) p.push(semPts + (semPts > 1 ? ' itens sem pontos' : ' item sem pontos'));
+  if (semCad) p.push(semCad + ' sem cadastro');
+  if (outros) p.push(outros + (outros > 1 ? ' avisos' : ' aviso'));
+  return '⚠ ' + p.join(' · ');
+}
+
+/* ============================================================
+ *  Leitura dos registros
+ * ============================================================ */
+function lerRegistros_() {
+  var sh = aba_(CFG.ABA_REGISTROS);
+  var v = lerBloco_(sh, CFG.LINHA_REG, 7, CFG.REG_COLS);
+  var out = [];
+  v.forEach(function (r, i) {
+    var d = r[0] instanceof Date ? r[0] : (r[0] ? new Date(r[0]) : null);
+    if (!d || isNaN(d.getTime()) || !r[1] || !String(r[2]).trim()) return;
+    var det = null;
+    if (r[14]) { try { det = JSON.parse(String(r[14]).replace(/^'/, '')); } catch (e) { det = null; } }
+    out.push({ linha: CFG.LINHA_REG + i, data: soDia_(d), os: r[1], equipe: String(r[2]).trim(), resp: r[3], local: r[4], demanda: r[5],
+      servicos: r[6], ocorrencias: r[7], transporte: r[8], obs: r[9], pontos: num_(r[10]) || 0, alerta: r[13], detalhe: det });
+  });
+  return out;
+}
+function ocorrenciasDoRegistro_(reg) {
+  if (reg.detalhe && reg.detalhe.length) return reg.detalhe.map(function (o) {
+    return { tipo: o.tipo, quando: o.quando || '', situacao: o.situacao || '', local: o.local || '', descricao: o.descricao || '',
+      lat: o.lat, lng: o.lng, servicos: o.servicos || [] };
+  });
+  var t = String(reg.ocorrencias || '');
+  if (!t || t === 'Nenhuma') return [];
+  return t.split('|').map(function (p) {
+    p = p.trim();
+    var loc = (p.match(/ @ ([^:]*):/) || [])[1] || '';
+    var desc = p.indexOf(':') !== -1 ? p.slice(p.indexOf(':') + 1).split('→')[0].trim() : '';
+    return { tipo: tipoOcorrencia_(p), quando: quandoOcorrencia_(p), situacao: situacaoOcorrencia_(p), local: loc.trim(), descricao: desc };
+  }).filter(function (o) { return o.tipo; });
+}
+function contarServicos_(servStr, mapa) {
+  var soma = 0;
+  String(servStr || '').split('|').forEach(function (s) {
+    s = s.trim(); if (!s) return;
+    var it = partesServico_(s), un = norm_(it.un);
+    var metragem = un ? (un === 'm' || un.indexOf('metro') === 0) : /cabo|lancamento|trecho|cordoalha/.test(norm_(it.nome));
+    var q = metragem ? 1 : (it.qtd || 1);
+    soma += q;
+    if (mapa) { var k = norm_(it.nome); if (!mapa[k]) mapa[k] = { desc: it.nome, qtd: 0 }; mapa[k].qtd += q; }
+  });
+  return soma;
+}
+
+/* ============================================================
+ *  Comissão por técnico (faixas, teto, escala)
+ * ============================================================ */
+function calcComissoes_(ano, mes, regsCache) {
+  var equipes = lerEquipes_(), escala = lerEscala_(), regras = lerRegrasComissao_();
+  var regs = (regsCache || lerRegistros_()).filter(function (r) { return r.data.getFullYear() === ano && r.data.getMonth() + 1 === mes; });
+  var porEqDia = {};
+  regs.forEach(function (r) { var k = r.equipe + '|' + chaveDia_(r.data); if (!porEqDia[k]) porEqDia[k] = { equipe: r.equipe, data: r.data, pts: 0 }; porEqDia[k].pts += r.pontos; });
+  var pessoas = {};
+  function p_(nome, base) { var k = norm_(nome); if (!pessoas[k]) pessoas[k] = { nome: nome, equipeBase: base || '', dias: {}, diasReforco: {}, equipesReforco: {}, pontos: 0, ausencias: [] }; return pessoas[k]; }
+  equipes.forEach(function (t) { t.membros.forEach(function (m) { p_(m, t.nome); }); });
+  Object.keys(porEqDia).forEach(function (k) {
+    var x = porEqDia[k], mapa = equipesNaData_(equipes, escala, x.data), pres = mapa[x.equipe] || [];
+    if (!pres.length) return;
+    var parte = x.pts * 2 / pres.length;
+    pres.forEach(function (m) {
+      var pe = p_(m.nome, ''); pe.pontos += parte; pe.dias[chaveDia_(x.data)] = true;
+      if (m.reforco) { pe.diasReforco[chaveDia_(x.data)] = true; pe.equipesReforco[x.equipe] = true; }
+    });
+  });
+  var ini = new Date(ano, mes - 1, 1).getTime(), fim = new Date(ano, mes, 0).getTime();
+  escala.forEach(function (e) {
+    if (e.ate.getTime() < ini || e.de.getTime() > fim) return;
+    var a = Math.max(e.de.getTime(), ini), b = Math.min(e.ate.getTime(), fim), dias = Math.round((b - a) / 86400000) + 1;
+    var pe = p_(e.tecnico, '');
+    if (e.tipo !== 'reforco') pe.ausencias.push((e.tipo === 'ferias' ? 'Férias ' : 'Folga ') + dias + (dias > 1 ? ' dias' : ' dia'));
+  });
+  return Object.keys(pessoas).map(function (k) {
+    var pe = pessoas[k], pts = Math.round(pe.pontos * 10) / 10, faixa = null;
+    regras.faixas.forEach(function (f) { if (pts >= f.de) faixa = f; });
+    var valor = faixa ? Math.min(faixa.valor, regras.teto) : 0, prox = null;
+    regras.faixas.forEach(function (f) { if (!prox && f.de > pts) prox = f; });
+    var obs = pe.ausencias.slice();
+    var nReforco = Object.keys(pe.diasReforco).length;
+    if (nReforco) obs.push('Reforço na ' + Object.keys(pe.equipesReforco).join(', ') + ' (' + nReforco + (nReforco > 1 ? ' dias)' : ' dia)'));
+    return { nome: pe.nome, equipeBase: pe.equipeBase, equipesReforco: Object.keys(pe.equipesReforco), dias: Object.keys(pe.dias).length,
+      pontos: pts, faixa: faixa ? (faixa.de + (faixa.ate ? '–' + faixa.ate : '+')) : 'abaixo de ' + regras.faixas[0].de,
+      valor: valor, faltam: prox ? Math.ceil(prox.de - pts) : 0, obs: obs.join(' · '), teto: regras.teto };
+  }).sort(function (a, b) { return b.pontos - a.pontos; });
+}
+
+/* ============================================================
+ *  Menu, gatilhos e navegação
+ * ============================================================ */
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('InfraControl')
+    .addItem('Atualizar painel', 'atualizarPainel')
+    .addItem('Atualizar relatório', 'atualizarRelatorio')
+    .addItem('Detalhes da OS selecionada', 'abrirDetalhesRelatorio')
+    .addItem('Relatório do mês', 'abrirRelatorioMensal')
+    .addSeparator()
+    .addItem('Recalcular pontos…', 'recalcularPontos')
+    .addItem('Verificar cadastros', 'verificarCadastros')
+    .addItem('Sincronizar listas', 'sincronizarListas')
+    .addSeparator()
+    .addItem('Instalar / reaplicar visual', 'instalarInfraControl')
+    .addToUi();
+}
+function irInicio() { ir_(CFG.ABA_PAINEL); }
+function irCadastros() { ir_(CFG.ABA_CAD); }
+function irEquipes() { ir_(CFG.ABA_EQUIPES); }
+function irRelatorios() { ir_(CFG.ABA_RELATORIO); }
+function irRegistros() { ir_(CFG.ABA_REGISTROS); }
+function irConfig() { ir_(CFG.ABA_CONFIG); }
+function ir_(nome) { var s = aba_(nome); if (s) { s.activate(); s.getRange('G4').activate(); } }
+
+// gatilho instalável de edição (criado pela instalação)
+function aoEditar(e) {
+  if (!e || !e.range) return;
+  var sh = e.range.getSheet(), nome = sh.getName(), row = e.range.getRow(), col = e.range.getColumn();
+  try {
+    if (nome === CFG.ABA_PAINEL && row === 5 && col >= 17) atualizarPainel();
+    else if (nome === CFG.ABA_RELATORIO) {
+      if (row === 5 && col >= 11 && col <= 14) atualizarRelatorio();
+      else if (col === 14 && row >= REL.dados && e.value === 'TRUE') {
+        e.range.setValue(false);
+        var linhaReg = sh.getRange(row, 16).getValue();
+        if (linhaReg) abrirDetalhesLinha_(Number(linhaReg), String(sh.getRange(5, 11).getValue()));
+      }
+    } else if (nome === CFG.ABA_EQUIPES) {
+      if (row >= CFG.LINHA_EQUIPES && row < CFG.LINHA_EQUIPES + CFG.EQ_MAX_LINHAS && col <= 11) { sincronizarListas(); }
+    } else if (nome === CFG.ABA_CONFIG) {
+      if (row >= 7 && row <= 11 && col === 9) aplicarCabecalhos_();
+      if (row >= 15 && row <= 22) atualizarPainel();
+      if (row >= 27) preencherUsadaEm_();
+    }
+  } catch (err) { console.error(err); }
+}
+
+/* ============================================================
+ *  Ferramentas
+ * ============================================================ */
+function sincronizarListas() {
+  var eq = lerEquipes_(), nomes = eq.filter(function (t) { return t.ativa; }).map(function (t) { return t.nome; });
+  var tecnicos = []; eq.forEach(function (t) { t.membros.forEach(function (m) { if (tecnicos.indexOf(m) === -1) tecnicos.push(m); }); });
+  var anos = anosDisponiveis_();
+  var dv = function (lista) { return SpreadsheetApp.newDataValidation().requireValueInList(lista, true).setAllowInvalid(false).build(); };
+  var p = aba_(CFG.ABA_PAINEL);
+  if (p) {
+    p.getRange('Q5').setDataValidation(dv(['Todos os meses'].concat(MESES)));
+    p.getRange('T5').setDataValidation(dv(anos.map(String)));
+    p.getRange('W5').setDataValidation(dv(['Todas as equipes'].concat(nomes)));
+  }
+  var r = aba_(CFG.ABA_RELATORIO);
+  if (r && nomes.length) {
+    r.getRange('K5').setDataValidation(dv(nomes));
+    r.getRange('L5').setDataValidation(dv(MESES));
+    r.getRange('M5').setDataValidation(dv(anos.map(String)));
+  }
+  var m = aba_(CFG.ABA_EQUIPES);
+  if (m && tecnicos.length) {
+    m.getRange(CFG.ESCALA.linha, 7, CFG.ESCALA.qtd, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(tecnicos, true).setAllowInvalid(true).build());
+    m.getRange(CFG.ESCALA.linha, 9, CFG.ESCALA.qtd, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(nomes, true).setAllowInvalid(true).build());
+  }
+  var c = aba_(CFG.ABA_CONFIG);
+  if (c) {
+    var r22 = nr_('CONF_EQPADRAO'); if (r22) r22.setDataValidation(dv(['Todas as equipes'].concat(nomes)));
+    var aj = nr_('CONF_AJUSTES');
+    if (aj) {
+      var serv = lerCadastros_().servicos.map(function (s) { return s.nome; });
+      aj.offset(0, 0, aj.getNumRows(), 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(serv, true).setAllowInvalid(true).build());
+    }
+  }
+}
+function anosDisponiveis_() {
+  var anos = {}, atual = new Date().getFullYear(); anos[atual] = true;
+  try { lerRegistros_().forEach(function (r) { anos[r.data.getFullYear()] = true; }); } catch (e) {}
+  return Object.keys(anos).map(Number).sort();
+}
+function verificarCadastros() {
+  var cad = lerCadastros_(), eq = lerEquipes_(), msg = [];
+  var semPts = cad.servicos.filter(function (s) { var m = norm_(s.medida); return s.ativoFlag && !(m === 'm' || m.indexOf('metro') === 0) && num_(s.pontos) === null; });
+  msg.push('Serviços ativos: ' + cad.servicos.filter(function (s) { return s.ativoFlag; }).length + ' | sem pontos: ' + semPts.length);
+  if (semPts.length) msg.push('  ' + semPts.slice(0, 15).map(function (s) { return s.nome; }).join('; ') + (semPts.length > 15 ? '; ...' : ''));
+  var occSem = cad.ocorrencias.filter(function (o) { return o.ativoFlag && num_(o.pontos) === null; }).length;
+  msg.push('Ocorrências ativas sem pontos: ' + occSem);
+  [['servicos', 'Serviços'], ['ocorrencias', 'Ocorrências'], ['transportes', 'Transportes'], ['demandas', 'Demandas']].forEach(function (x) {
+    var vistos = {}, rep = [];
+    cad[x[0]].forEach(function (it) { var k = norm_(it.nome); if (vistos[k]) rep.push(it.nome); else vistos[k] = true; });
+    if (rep.length) msg.push('Nomes repetidos em ' + x[1] + ': ' + rep.join('; '));
+  });
+  var semMembro = eq.filter(function (t) { return t.ativa && !t.membros.length; });
+  if (semMembro.length) msg.push('Equipes sem responsável: ' + semMembro.map(function (t) { return t.nome; }).join('; '));
+  msg.push('PIN do app: ' + (getPin_() ? 'ativado' : 'desativado'));
+  SpreadsheetApp.getUi().alert('Verificação dos cadastros', msg.join('\n'), SpreadsheetApp.getUi().ButtonSet.OK);
+}
+function recalcularPontos() {
+  var ui = SpreadsheetApp.getUi();
+  var r = ui.prompt('Recalcular pontos', 'Informe o mês/ano (ex.: 11/2026) ou deixe em branco para recalcular todos os registros.', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  var t = r.getResponseText().trim(), mes = null, ano = null;
+  if (t) { var m = t.match(/^(\d{1,2})\s*\/\s*(\d{4})$/); if (!m) { ui.alert('Formato inválido. Use mm/aaaa.'); return; } mes = +m[1]; ano = +m[2]; }
+  var n = recalcular_(ano, mes);
+  try { atualizarPainel(); atualizarRelatorio(); } catch (e) {}
+  ui.alert('Pontos recalculados em ' + n + (n === 1 ? ' registro.' : ' registros.'));
+}
+function recalcular_(ano, mes) {
+  var sh = aba_(CFG.ABA_REGISTROS), last = sh.getLastRow();
+  if (last < CFG.LINHA_REG) return 0;
+  var v = sh.getRange(CFG.LINHA_REG, 7, last - CFG.LINHA_REG + 1, CFG.REG_COLS).getValues();
+  var cad = lerCadastros_(), conf = lerConfig_(), pts = [], com = [], al = [], notas = [], n = 0;
+  v.forEach(function (r) {
+    var d = r[0] instanceof Date ? r[0] : null, alvo = d && r[1] && (!ano || (d.getFullYear() === ano && d.getMonth() + 1 === mes));
+    if (alvo) {
+      var c = calcularPontos_(r[6], r[7], r[8], cad, conf);
+      pts.push([c.pontos]); com.push(['']); al.push([resumoAlertas_(c.alertas)]); notas.push([c.alertas.join('\n')]); n++;
+    } else { pts.push([r[10]]); com.push([r[11]]); al.push([r[13]]); notas.push([null]); }
+  });
+  sh.getRange(CFG.LINHA_REG, CFG.REG_COL_PONTOS, pts.length, 1).setValues(pts);
+  sh.getRange(CFG.LINHA_REG, CFG.REG_COL_COMISSAO, com.length, 1).setValues(com);
+  var rAl = sh.getRange(CFG.LINHA_REG, CFG.REG_COL_ALERTA, al.length, 1);
+  var notasAtuais = rAl.getNotes();
+  rAl.setValues(al);
+  rAl.setNotes(notas.map(function (x, i) { return [x[0] === null ? notasAtuais[i][0] : x[0]]; }));
+  return n;
+}
+
+/* ============================================================
+ *  Visual comum: barra verde, menu com um clique, fonte
+ * ============================================================ */
+var MENU_ = [['inicio', 'Início', 'irInicio', 'Painel'], ['cadastros', 'Cadastros', 'irCadastros', 'Cadastros_Pontos'],
+  ['equipes', 'Equipes & Metas', 'irEquipes', 'Cadastro_Metas'], ['relatorios', 'Relatórios', 'irRelatorios', 'Relatorio_Individual'],
+  ['registros', 'Registros', 'irRegistros', 'Registros'], ['config', 'Configurações', 'irConfig', 'Configurações']];
+
+function img_(nome) { return String(nrVal_('CONF_APPURL', 'https://teste-orcin-delta.vercel.app')).replace(/\/+$/, '') + '/planilha/' + nome + '.png'; }
+function inserirImagem_(sh, nome, col, row, ox, oy, w, h, script) {
+  try {
+    var im = sh.insertImage(img_(nome), col, row, ox, oy);
+    im.setWidth(w).setHeight(h);
+    if (script) im.assignScript(script);
+    return im;
+  } catch (e) { console.warn('Imagem ' + nome + ': ' + e); return null; }
+}
+function quebrarMergesFronteira_(sh) {
+  var lc = sh.getMaxColumns(), lr = Math.min(sh.getMaxRows(), 400);
+  sh.getRange(1, 1, lr, lc).getMergedRanges().forEach(function (m) {
+    if ((m.getColumn() <= 6 && m.getLastColumn() >= 7) || (m.getRow() <= 2 && m.getLastRow() >= 3) || (m.getRow() <= 7 && m.getLastRow() >= 8 && sh.getName() === CFG.ABA_REGISTROS)) m.breakApart();
+  });
+}
+function aplicarCabecalho_(sh, conf) {
+  conf = conf || lerConfig_();
+  var t = 'InfraControl\n' + conf.nome;
+  var rt = SpreadsheetApp.newRichTextValue().setText(t)
+    .setTextStyle(0, 12, ts_({ size: 15, bold: true, color: '#ffffff' }))
+    .setTextStyle(13, t.length, ts_({ size: 9, color: '#c9dacb' })).build();
+  var c2 = sh.getRange('C2:D2');
+  if (!c2.isPartOfMerge()) c2.merge();
+  c2.setRichTextValue(rt).setWrap(true).setVerticalAlignment('middle').setHorizontalAlignment('left');
+}
+function aplicarCabecalhos_() { var conf = lerConfig_(); MENU_.forEach(function (m) { var s = aba_(m[3]); if (s) aplicarCabecalho_(s, conf); }); }
+
+function base_(sh, chaveAtiva, opts) {
+  opts = opts || {};
+  var conf = lerConfig_();
+  sh.setHiddenGridlines(true);
+  sh.setFrozenRows(0); sh.setFrozenColumns(0);
+  quebrarMergesFronteira_(sh);
+  var lc = sh.getMaxColumns(), lr = sh.getMaxRows();
+  [15, 50, 34, 140, 20, 30].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
+  sh.setRowHeight(1, 8); sh.setRowHeight(2, 52);
+  sh.getRange(1, 1, 2, lc).setBackground(COR.verde).setBorder(false, false, false, false, false, false);
+  // limpa o menu antigo (links e ícones nas células)
+  var menu = sh.getRange(3, 1, lr - 2, 6);
+  menu.breakApart(); menu.clearContent().clearNote().setBackground(COR.verde).setBorder(false, false, false, false, false, false);
+  sh.getRange('B3:D3').clearContent();
+  aplicarCabecalho_(sh, conf);
+  sh.getImages().forEach(function (im) { im.remove(); });
+  sh.getDrawings().forEach(function (d) { d.remove(); });
+  var falhou = false;
+  MENU_.forEach(function (m, i) {
+    var ativo = m[0] === chaveAtiva;
+    var im = inserirImagem_(sh, 'menu_' + m[0] + '_' + (ativo ? 1 : 0), 3, 3, 0, 18 + i * 38, 174, 32, ativo ? null : m[2]);
+    if (!im) falhou = true;
+  });
+  if (falhou) { // reserva: links de texto no lugar das imagens
+    sh.getImages().forEach(function (im) { im.remove(); });
+    MENU_.forEach(function (m, i) {
+      var alvo = aba_(m[3]), r = 4 + i * 2;
+      sh.getRange(r, 3, 1, 2).merge().setFontColor(m[0] === chaveAtiva ? '#ffffff' : '#e3ede5').setFontWeight(m[0] === chaveAtiva ? 'bold' : 'normal')
+        .setValue(alvo && m[0] !== chaveAtiva ? '' : m[1]);
+      if (alvo && m[0] !== chaveAtiva) sh.getRange(r, 3).setFormula('=HYPERLINK("#gid=' + alvo.getSheetId() + '","' + m[1] + '")');
+    });
+  }
+  sh.getRange(1, 1, lr, lc).setFontFamily(FONTE);
+  sh.setFrozenColumns(6);
+  sh.setFrozenRows(opts.congelarLinhas || 2);
+}
+function card_(sh, a1) { sh.getRange(a1).setBackground(COR.branco).setBorder(true, true, true, true, null, null, COR.borda, SpreadsheetApp.BorderStyle.SOLID); }
+function titulo_(sh, a1, texto, sub, subA1) {
+  sh.getRange(a1).merge().setValue(texto).setFontFamily(FONTE).setFontSize(18).setFontWeight('bold').setFontColor(COR.verdeEsc).setVerticalAlignment('bottom').setHorizontalAlignment('left');
+  if (sub) sh.getRange(subA1).merge().setValue(sub).setFontFamily(FONTE).setFontSize(10).setFontWeight('normal').setFontColor(COR.cinza).setVerticalAlignment('top').setHorizontalAlignment('left');
+}
+function rotulo_(r, t) { r.merge().setValue(t).setFontSize(8).setFontWeight('bold').setFontColor(COR.cinza).setVerticalAlignment('bottom'); return r; }
+function caixaFiltro_(r) {
+  r.merge().setBackground(COR.branco).setBorder(true, true, true, true, null, null, '#cfd8d1', SpreadsheetApp.BorderStyle.SOLID)
+    .setFontSize(10).setFontWeight('bold').setFontColor(COR.texto).setVerticalAlignment('middle').setHorizontalAlignment('left');
+  return r;
+}
+function faixaTitulo_(r, t) {
+  r.merge().setValue(t).setBackground(COR.faixaCinza).setFontWeight('bold').setFontColor('#434343').setFontSize(10)
+    .setHorizontalAlignment('left').setVerticalAlignment('middle')
+    .setBorder(true, null, null, null, null, null, COR.bordaTitulo, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+}
+function cabecalhoTabela_(r) {
+  r.setBackground(COR.cabecalho).setFontWeight('bold').setFontColor('#434343').setFontSize(9).setHorizontalAlignment('center').setVerticalAlignment('middle')
+    .setBorder(null, null, true, null, null, null, COR.bordaTitulo, SpreadsheetApp.BorderStyle.DOUBLE);
+}
+function prepararArea_(sh, colIni, larguras, maxLinhas) {
+  var lc = sh.getMaxColumns(), lr = sh.getMaxRows();
+  var area = sh.getRange(3, colIni, lr - 2, lc - colIni + 1);
+  area.breakApart(); area.clear(); area.clearDataValidations(); area.clearNote();
+  sh.setConditionalFormatRules([]);
+  var precisa = colIni + larguras.length - 1;
+  if (lc > precisa) sh.deleteColumns(precisa + 1, lc - precisa);
+  if (lc < precisa) sh.insertColumnsAfter(lc, precisa - lc);
+  larguras.forEach(function (w, i) { sh.setColumnWidth(colIni + i, w); });
+  if (maxLinhas && sh.getMaxRows() < maxLinhas) sh.insertRowsAfter(sh.getMaxRows(), maxLinhas - sh.getMaxRows());
+  sh.getRange(3, colIni, sh.getMaxRows() - 2, larguras.length).setBackground(COR.fundo).setFontFamily(FONTE).setFontSize(10).setFontColor(COR.texto).setVerticalAlignment('middle');
+}
+
+/* ============================================================
+ *  PAINEL
+ * ============================================================ */
+var PAINEL = {
+  larg: [18, 72, 72, 12, 72, 72, 12, 72, 72, 12, 72, 72, 12, 72, 72, 12, 72, 72, 18], // G..Y
+  kpiCols: [8, 11, 14, 17, 20, 23],             // H, K, N, Q, T, W (cada card = 2 colunas)
+  slots: [{ r: 11, c: 8 }, { r: 11, c: 17 }, { r: 23, c: 8 }, { r: 23, c: 17 }], // 11 linhas x 8 colunas
+  alturas: { 3: 10, 4: 30, 5: 28, 6: 14, 7: 28, 8: 36, 9: 22, 10: 16, 22: 16 }
+};
+function montarPainel_() {
+  var sh = aba_(CFG.ABA_PAINEL) || ss_().insertSheet(CFG.ABA_PAINEL, 0);
+  base_(sh, 'inicio');
+  prepararArea_(sh, 7, PAINEL.larg, 40);
+  sh.getRange(1, 7, 2, PAINEL.larg.length).setBackground(COR.verde);
+  for (var r = 3; r <= 40; r++) sh.setRowHeight(r, PAINEL.alturas[r] || 26);
+  [11, 23].forEach(function (b) { sh.setRowHeight(b, 32); sh.setRowHeight(b + 1, 22); sh.setRowHeight(b + 10, 22); });
+  titulo_(sh, 'H4:O4', 'Dashboard de Serviços', 'Execução dos serviços por tipo, equipe e período', 'H5:O5');
+  rotulo_(sh.getRange('Q4:R4'), 'MÊS'); rotulo_(sh.getRange('T4:U4'), 'ANO'); rotulo_(sh.getRange('W4:X4'), 'EQUIPE');
+  var conf = lerConfig_(), hoje = new Date();
+  caixaFiltro_(sh.getRange('Q5:R5')).setValue(norm_(conf.periodo).indexOf('todo') === 0 ? 'Todos os meses' : MESES[hoje.getMonth()]);
+  caixaFiltro_(sh.getRange('T5:U5')).setValue(String(hoje.getFullYear()));
+  caixaFiltro_(sh.getRange('W5:X5')).setValue(conf.equipePadrao || 'Todas as equipes');
+  sh.getRange('Q2:X2').merge().setHorizontalAlignment('right').setVerticalAlignment('middle').setFontSize(9).setFontColor('#c9dacb');
+  // cards de indicadores
+  var icones = ['servicos', 'calendario', 'alerta', 'caminhao', 'estrela', 'bandeira'];
+  PAINEL.kpiCols.forEach(function (c, i) {
+    card_(sh, sh.getRange(7, c, 3, 2).getA1Notation());
+    [7, 8, 9].forEach(function (rr) { sh.getRange(rr, c, 1, 2).merge().setHorizontalAlignment('left'); });
+    sh.getRange(7, c).setFontSize(9).setFontWeight('bold').setFontColor(COR.cinza).setVerticalAlignment('bottom');
+    sh.getRange(8, c).setFontSize(20).setFontWeight('bold').setFontColor(COR.texto);
+    sh.getRange(9, c).setFontSize(9).setFontColor('#6b7a6f').setVerticalAlignment('top');
+    inserirImagem_(sh, 'kpi_' + icones[i], c, 7, 10, 3, 24, 24, null);
+  });
+  sincronizarListas();
+  atualizarPainel();
+}
+function lerFiltroPainel_(sh) {
+  var mesTxt = String(sh.getRange('Q5').getValue()), ano = Number(sh.getRange('T5').getValue()) || new Date().getFullYear();
+  var mes = MESES.indexOf(mesTxt) + 1; // 0 = todos
+  var eq = String(sh.getRange('W5').getValue() || 'Todas as equipes');
+  return { mes: mes, ano: ano, equipe: (eq === 'Todas as equipes' || !eq) ? '' : eq, mesTxt: mesTxt };
+}
+function atualizarPainel() {
+  var sh = aba_(CFG.ABA_PAINEL); if (!sh) return;
+  var f = lerFiltroPainel_(sh), conf = lerConfig_(), regsTodos = lerRegistros_(), equipes = lerEquipes_();
+  var regsPeriodo = regsTodos.filter(function (r) { return r.data.getFullYear() === f.ano && (!f.mes || r.data.getMonth() + 1 === f.mes); });
+  var regs = regsPeriodo.filter(function (r) { return !f.equipe || r.equipe === f.equipe; });
+
+  var servMap = {}, ocoMap = {}, dias = {}, totServ = 0, totOco = 0, transp = 0, desvio = 0, pts = 0, pend = [];
+  regs.forEach(function (r) {
+    totServ += contarServicos_(r.servicos, servMap);
+    dias[chaveDia_(r.data)] = true;
+    pts += r.pontos;
+    ocorrenciasDoRegistro_(r).forEach(function (o) {
+      totOco++;
+      var k = norm_(o.tipo); if (!ocoMap[k]) ocoMap[k] = { desc: o.tipo, qtd: 0 }; ocoMap[k].qtd++;
+      var s = norm_(o.situacao);
+      if (s === 'pendente' || s === 'parcial') pend.push({ os: r.os, equipe: r.equipe, tipo: o.tipo, local: o.local, sit: o.situacao, lat: o.lat, lng: o.lng, data: r.data });
+    });
+    var t = String(r.transporte || '');
+    if (t && t !== 'Não' && t !== 'Nenhum') { transp++; var mv = t.match(/\(\s*(\d+)\s*viage/i); if (mv && +mv[1] > 1) desvio++; }
+  });
+  var nDias = Object.keys(dias).length;
+  var vis = {}; conf.quadros.forEach(function (q) { vis[q.nome] = q; });
+  var kpiVisivel = !vis['Indicadores'] || vis['Indicadores'].ver;
+
+  // indicadores
+  var kpis = [
+    ['Total de serviços', totServ, 'em ' + regs.length + ' OS'],
+    ['Média diária', nDias ? Math.round(totServ / nDias) : 0, nDias + (nDias === 1 ? ' dia com registro' : ' dias com registro')],
+    ['Ocorrências', totOco, 'no período'],
+    ['Transportes de material', transp, desvio + (desvio === 1 ? ' com desvio de rota' : ' com desvio de rota')],
+    ['Pontos no período', fmtNum_(pts), f.equipe || 'todas as equipes'],
+    ['Pendências', pend.length, 'para retorno']
+  ];
+  PAINEL.kpiCols.forEach(function (c, i) {
+    sh.getRange(7, c).setValue('         ' + kpis[i][0]);
+    sh.getRange(8, c).setValue(kpis[i][1]);
+    sh.getRange(9, c).setValue(kpis[i][2]);
+  });
+  if (kpiVisivel) sh.showRows(6, 5); else sh.hideRows(6, 5);
+
+  // quadros nos espaços
+  var lista = conf.quadros.filter(function (q) { return q.ver && q.nome !== 'Indicadores'; }).sort(function (a, b) { return a.ordem - b.ordem; }).map(function (q) { return q.nome; });
+  var temComissao = lista.indexOf(QUADROS_PADRAO_[5]) !== -1;
+  if (f.equipe && temComissao) { var im = lista.indexOf('Metas do mês por equipe'); if (im !== -1) lista[im] = QUADROS_PADRAO_[5]; lista = lista.filter(function (n, i) { return lista.indexOf(n) === i; }); }
+  else lista = lista.filter(function (n) { return n !== QUADROS_PADRAO_[5]; });
+
+  var dados = {
+    'Serviços mais executados': function (slot) { ranking_(sh, slot, 'Serviços mais executados', servMap, COR.verde, 'Nenhum serviço no período.'); },
+    'Ocorrências mais frequentes': function (slot) { ranking_(sh, slot, 'Ocorrências mais frequentes', ocoMap, '#c26a2b', 'Nenhuma ocorrência no período.'); },
+    'Metas do mês por equipe': function (slot) { quadroMetas_(sh, slot, equipes, regsPeriodo, f); },
+    'Pendências para retorno': function (slot) { quadroPendencias_(sh, slot, pend); },
+  };
+  dados[QUADROS_PADRAO_[5]] = function (slot) { quadroComissao_(sh, slot, f, regsTodos); };
+  PAINEL.slots.forEach(function (slot, i) {
+    limparSlot_(sh, slot);
+    var nome = lista[i];
+    if (nome && dados[nome]) dados[nome](slot);
+  });
+  [[0, 1, 11], [2, 3, 23]].forEach(function (b) {
+    if (lista[b[0]] || lista[b[1]]) sh.showRows(b[2], 11); else sh.hideRows(b[2], 11);
+  });
+  sh.getRange('Q2').setValue(conf.setor + ' · atualizado às ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'HH:mm'));
+}
+function limparSlot_(sh, s) {
+  var r = sh.getRange(s.r, s.c, 11, 8);
+  r.breakApart(); r.clearContent(); r.clearNote(); r.setBorder(false, false, false, false, false, false);
+  r.setBackground(COR.fundo).setFontWeight('normal').setFontSize(10).setFontColor(COR.texto).setHorizontalAlignment('left');
+}
+function moldeSlot_(sh, s, titulo, sub) {
+  card_(sh, sh.getRange(s.r, s.c, 11, 8).getA1Notation());
+  sh.getRange(s.r, s.c, 1, 5).merge().setValue(titulo).setFontSize(11).setFontWeight('bold').setFontColor(COR.verdeEsc).setVerticalAlignment('middle');
+  if (sub) sh.getRange(s.r, s.c + 5, 1, 3).merge().setValue(sub).setFontSize(8).setFontColor('#6b7a6f').setHorizontalAlignment('right');
+}
+function linhaSep_(sh, s, row) { sh.getRange(row, s.c, 1, 8).setBorder(null, null, true, null, null, null, COR.linha, SpreadsheetApp.BorderStyle.SOLID); }
+function barra_(valor, max, cor) {
+  return '=SPARKLINE(' + Math.max(0, valor) + ',{"charttype","bar";"max",' + Math.max(max, 1) + ';"color1","' + cor + '";"empty","zero"})';
+}
+function ranking_(sh, s, titulo, mapa, cor, vazio) {
+  moldeSlot_(sh, s, titulo, '');
+  var arr = Object.keys(mapa).map(function (k) { return mapa[k]; }).sort(function (a, b) { return b.qtd - a.qtd; }).slice(0, 8);
+  if (!arr.length) { sh.getRange(s.r + 2, s.c, 1, 8).merge().setValue(vazio).setFontColor(COR.cinzaClaro).setHorizontalAlignment('center'); return; }
+  var max = arr[0].qtd;
+  arr.forEach(function (it, i) {
+    var row = s.r + 1 + i;
+    sh.getRange(row, s.c, 1, 5).merge().setValue((i + 1) + '.   ' + it.desc).setFontWeight('normal');
+    sh.getRange(row, s.c + 6).setFormula(barra_(it.qtd, max, cor));
+    sh.getRange(row, s.c + 7).setValue(it.qtd).setFontWeight('bold').setHorizontalAlignment('right');
+    linhaSep_(sh, s, row);
+  });
+}
+function quadroMetas_(sh, s, equipes, regsPeriodo, f) {
+  moldeSlot_(sh, s, 'Metas do mês por equipe', f.mes ? MESES[f.mes - 1] + ' ' + f.ano : 'ano ' + f.ano);
+  var porEq = {}; regsPeriodo.forEach(function (r) { porEq[r.equipe] = (porEq[r.equipe] || 0) + r.pontos; });
+  equipes.filter(function (t) { return t.ativa; }).slice(0, 8).forEach(function (t, i) {
+    var row = s.r + 1 + i, p = porEq[t.nome] || 0, meta = t.meta || 0, pct = meta ? p / meta : 0;
+    var cor = pct >= 1 ? COR.verdeOk : (pct >= 0.8 ? COR.ambar : COR.verde);
+    sh.getRange(row, s.c, 1, 2).merge().setValue(t.nome).setFontWeight('bold');
+    sh.getRange(row, s.c + 3, 1, 3).merge().setFormula(barra_(Math.min(p, meta || p), meta || Math.max(p, 1), cor));
+    sh.getRange(row, s.c + 6).setValue(fmtNum_(p)).setHorizontalAlignment('right').setFontColor(COR.cinza);
+    sh.getRange(row, s.c + 7).setValue(meta && f.mes ? Math.round(pct * 100) + '%' : '—').setFontWeight('bold').setHorizontalAlignment('right');
+    linhaSep_(sh, s, row);
+  });
+}
+function quadroPendencias_(sh, s, pend) {
+  moldeSlot_(sh, s, 'Pendências para retorno', pend.length + ' em aberto');
+  var h = s.r + 1;
+  [[0, 1, 'OS'], [1, 1, 'EQUIPE'], [3, 3, 'OCORRÊNCIA · REFERÊNCIA'], [6, 1, 'LOCAL'], [7, 1, 'STATUS']].forEach(function (x) {
+    sh.getRange(h, s.c + x[0], 1, x[1]).merge().setValue(x[2]).setFontSize(8).setFontWeight('bold').setFontColor('#6b7a6f');
+  });
+  linhaSep_(sh, s, h);
+  if (!pend.length) { sh.getRange(h + 2, s.c, 1, 8).merge().setValue('Nenhuma ocorrência parcial ou pendente no período.').setFontColor(COR.cinzaClaro).setHorizontalAlignment('center'); return; }
+  pend.sort(function (a, b) { return b.data - a.data; }).slice(0, 7).forEach(function (p, i) {
+    var row = h + 1 + i;
+    sh.getRange(row, s.c).setValue(String(p.os)).setFontSize(9);
+    sh.getRange(row, s.c + 1).setValue(p.equipe).setFontSize(9);
+    sh.getRange(row, s.c + 3, 1, 3).merge().setValue(p.tipo + (p.local ? ' · ' + p.local : '')).setFontSize(9).setWrap(false);
+    if (p.lat && p.lng) sh.getRange(row, s.c + 6).setFormula('=HYPERLINK("https://www.google.com/maps?q=' + p.lat + ',' + p.lng + '","Mapa")').setFontColor(COR.verde).setFontWeight('bold').setFontSize(9);
+    else sh.getRange(row, s.c + 6).setValue('—').setFontColor(COR.cinzaClaro);
+    sh.getRange(row, s.c + 7).setValue(p.sit).setFontWeight('bold').setFontSize(9).setFontColor(norm_(p.sit) === 'pendente' ? COR.laranja : COR.ambar);
+    linhaSep_(sh, s, row);
+  });
+}
+function quadroComissao_(sh, s, f, regsTodos) {
+  var hoje = new Date(), mes = f.mes || (hoje.getMonth() + 1), ano = f.ano;
+  var lista = calcComissoes_(ano, mes, regsTodos).filter(function (p) { return p.equipeBase === f.equipe || p.equipesReforco.indexOf(f.equipe) !== -1; });
+  var teto = lista.length ? lista[0].teto : lerRegrasComissao_().teto;
+  moldeSlot_(sh, s, 'Comissão por técnico', f.equipe + ' · ' + MESES[mes - 1] + ' · teto ' + fmtR_(teto));
+  if (!lista.length) { sh.getRange(s.r + 2, s.c, 1, 8).merge().setValue('Sem técnicos nesta equipe.').setFontColor(COR.cinzaClaro).setHorizontalAlignment('center'); return; }
+  lista.slice(0, 8).forEach(function (p, i) {
+    var row = s.r + 1 + i, t = p.nome + (p.obs ? '  · ' + p.obs : '');
+    var rt = SpreadsheetApp.newRichTextValue().setText(t).setTextStyle(0, p.nome.length, ts_({ size: 10, bold: true }));
+    if (p.obs) rt.setTextStyle(p.nome.length, t.length, ts_({ size: 8, color: '#8a3a0a' }));
+    sh.getRange(row, s.c, 1, 3).merge().setRichTextValue(rt.build()).setWrap(false);
+    sh.getRange(row, s.c + 3, 1, 2).merge().setFormula(barra_(p.valor, p.teto, COR.verde));
+    sh.getRange(row, s.c + 6).setValue(fmtNum_(p.pontos)).setHorizontalAlignment('right').setFontColor(COR.cinza);
+    sh.getRange(row, s.c + 7).setValue(fmtR_(p.valor)).setFontWeight('bold').setHorizontalAlignment('right');
+    linhaSep_(sh, s, row);
+  });
+  sh.getRange(s.r + 10, s.c, 1, 8).merge().setValue('Pontos × 2 ÷ pessoas no dia · faixas e teto em Equipes & Metas').setFontSize(8).setFontColor(COR.cinzaClaro);
+}
+
+/* ============================================================
+ *  RELATÓRIO INDIVIDUAL
+ * ============================================================ */
+var REL = { larg: [18, 95, 80, 125, 140, 250, 85, 60, 18, 10], dados: 23 }; // G..P (P = linha do registro, oculta)
+function montarRelatorio_() {
+  var sh = aba_(CFG.ABA_RELATORIO);
+  var antes = { eq: '', mes: '', ano: '' };
+  try { antes.eq = String(sh.getRange('I5').getValue() || sh.getRange('K5').getValue()); } catch (e) {}
+  base_(sh, 'relatorios');
+  prepararArea_(sh, 7, REL.larg, 120);
+  sh.getRange(1, 7, 2, REL.larg.length).setBackground(COR.verde);
+  sh.hideColumns(16);
+  var alt = { 3: 10, 4: 30, 5: 28, 6: 14, 7: 28, 8: 40, 9: 18, 10: 22, 11: 30, 12: 16, 13: 30, 14: 22, 20: 18, 21: 34, 22: 26 };
+  for (var r = 3; r <= 22; r++) sh.setRowHeight(r, alt[r] || 26);
+  titulo_(sh, 'H4:J4', 'Relatório da equipe', 'Pontos, comissão e OS do mês selecionado', 'H5:J5');
+  rotulo_(sh.getRange('K4'), 'EQUIPE'); rotulo_(sh.getRange('L4'), 'MÊS'); rotulo_(sh.getRange('M4:N4'), 'ANO');
+  var eqs = lerEquipes_().filter(function (t) { return t.ativa; }).map(function (t) { return t.nome; }), hoje = new Date();
+  caixaFiltro_(sh.getRange('K5')).setValue(eqs.indexOf(antes.eq) !== -1 ? antes.eq : (eqs[0] || ''));
+  caixaFiltro_(sh.getRange('L5')).setValue(MESES[hoje.getMonth()]);
+  caixaFiltro_(sh.getRange('M5:N5')).setValue(String(hoje.getFullYear()));
+  // status
+  card_(sh, 'H7:K11');
+  sh.getRange('H7:J7').merge().setValue('Status da meta').setFontSize(11).setFontWeight('bold').setFontColor(COR.verdeEsc);
+  sh.getRange('K7').setHorizontalAlignment('right').setFontWeight('bold').setFontSize(10);
+  sh.getRange('H8:K8').merge(); sh.getRange('H9:K9').merge(); sh.getRange('H10:K10').merge();
+  sh.getRange('H11:K11').merge().setValue('●  Abaixo: até 79%     ●  Perto da meta: 80 a 99%     ●  Atingida: 100% ou mais').setFontSize(8).setFontColor(COR.cinzaClaro);
+  // indicadores 2x2
+  [['L7:L8', 'Meta do mês'], ['M7:N8', 'Pontos'], ['L10:L11', 'OS no mês'], ['M10:N11', 'Dias trabalhados']].forEach(function (x) {
+    var rg = sh.getRange(x[0]); card_(sh, x[0]);
+    var r0 = rg.getRow(), c0 = rg.getColumn(), w = rg.getNumColumns();
+    sh.getRange(r0, c0, 1, w).merge().setValue('   ' + x[1]).setFontSize(9).setFontWeight('bold').setFontColor(COR.cinza).setVerticalAlignment('bottom');
+    sh.getRange(r0 + 1, c0, 1, w).merge().setFontSize(18).setFontWeight('bold').setHorizontalAlignment('left');
+  });
+  // comissão por técnico
+  card_(sh, 'H13:N19');
+  sh.getRange('H13:K13').merge().setValue('Comissão por técnico').setFontSize(11).setFontWeight('bold').setFontColor(COR.verdeEsc);
+  sh.getRange('L13:N13').merge().setHorizontalAlignment('right').setFontSize(8).setFontColor('#6b7a6f');
+  sh.getRange('H14:I14').merge(); sh.getRange('M14:N14').merge();
+  var hd = sh.getRange('H14:N14');
+  sh.getRange('H14').setValue('TÉCNICO'); sh.getRange('J14').setValue('DIAS'); sh.getRange('K14').setValue('PONTOS'); sh.getRange('L14').setValue('FAIXA · OBSERVAÇÃO'); sh.getRange('M14').setValue('COMISSÃO');
+  hd.setFontSize(8).setFontWeight('bold').setFontColor('#6b7a6f').setBorder(null, null, true, null, null, null, COR.verde, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  sh.getRange('J14:K14').setHorizontalAlignment('right'); sh.getRange('M14').setHorizontalAlignment('right');
+  for (var k = 15; k <= 18; k++) { sh.getRange(k, 8, 1, 2).merge(); sh.getRange(k, 13, 1, 2).merge(); }
+  // tabela
+  sh.getRange('H21:K21').merge().setValue('OS do mês').setFontSize(11).setFontWeight('bold').setFontColor(COR.verdeEsc);
+  inserirImagem_(sh, 'btn_relmes', 12, 21, 0, 0, 168, 34, 'abrirRelatorioMensal');
+  var cab = sh.getRange('H22:N22');
+  cab.setValues([['DATA', 'Nº DA OS', 'RESPONSÁVEL', 'LOCAL', 'DEMANDA', 'PONTOS', 'VER']]);
+  cab.setFontSize(8).setFontWeight('bold').setFontColor('#6b7a6f').setBackground(COR.branco).setBorder(null, null, true, null, null, null, COR.verde, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
+  sh.getRange('M22:N22').setHorizontalAlignment('center'); sh.getRange('M22').setHorizontalAlignment('right');
+  sincronizarListas();
+  atualizarRelatorio();
+}
+function atualizarRelatorio() {
+  var sh = aba_(CFG.ABA_RELATORIO); if (!sh) return;
+  var eq = String(sh.getRange('K5').getValue()), mes = MESES.indexOf(String(sh.getRange('L5').getValue())) + 1, ano = Number(sh.getRange('M5').getValue());
+  if (!mes) mes = new Date().getMonth() + 1; if (!ano) ano = new Date().getFullYear();
+  var regsTodos = lerRegistros_();
+  var regs = regsTodos.filter(function (r) { return r.equipe === eq && r.data.getFullYear() === ano && r.data.getMonth() + 1 === mes; }).sort(function (a, b) { return a.data - b.data; });
+  var equipe = lerEquipes_().filter(function (t) { return t.nome === eq; })[0] || { meta: 0 };
+  var pts = regs.reduce(function (s, r) { return s + r.pontos; }, 0), meta = equipe.meta || 0, pct = meta ? pts / meta : 0;
+  var dias = {}; regs.forEach(function (r) { dias[chaveDia_(r.data)] = true; });
+  // status
+  var est = !meta ? ['Sem meta definida', COR.cinzaClaro] : pct >= 1 ? ['Meta atingida', COR.verdeOk] : pct >= 0.8 ? ['Perto da meta', COR.ambar] : ['Abaixo da meta', COR.laranja];
+  sh.getRange('K7').setValue('●  ' + est[0]).setFontColor(est[1]);
+  var big = (meta ? Math.round(pct * 100) + '%' : fmtNum_(pts)), resto = meta ? '   ' + fmtNum_(pts) + ' de ' + fmtNum_(meta) + ' pontos · faltam ' + fmtNum_(Math.max(0, meta - pts)) : '   pontos no mês';
+  sh.getRange('H8').setRichTextValue(SpreadsheetApp.newRichTextValue().setText(big + resto)
+    .setTextStyle(0, big.length, ts_({ size: 24, bold: true })).setTextStyle(big.length, (big + resto).length, ts_({ size: 10, color: COR.cinza })).build());
+  sh.getRange('H10').setFormula(barra_(Math.min(pts, meta || pts), meta || Math.max(pts, 1), est[1] === COR.cinzaClaro ? COR.verde : est[1]));
+  sh.getRange('L8').setValue(meta ? fmtNum_(meta) : '—');
+  sh.getRange('M8').setValue(fmtNum_(pts));
+  sh.getRange('L11').setValue(regs.length);
+  sh.getRange('M11').setValue(Object.keys(dias).length);
+  // comissão por técnico
+  var com = calcComissoes_(ano, mes, regsTodos).filter(function (p) { return p.equipeBase === eq || p.equipesReforco.indexOf(eq) !== -1; });
+  var teto = com.length ? com[0].teto : lerRegrasComissao_().teto;
+  sh.getRange('L13').setValue('teto ' + fmtR_(teto) + ' · faixas em Equipes & Metas');
+  var linhasC = sh.getRange('H15:N18'); linhasC.clearContent(); linhasC.setBorder(false, false, false, false, false, false);
+  com.slice(0, 4).forEach(function (p, i) {
+    var row = 15 + i;
+    sh.getRange(row, 8).setValue(p.nome).setFontWeight('bold');
+    sh.getRange(row, 10).setValue(p.dias).setHorizontalAlignment('right');
+    sh.getRange(row, 11).setValue(fmtNum_(p.pontos)).setHorizontalAlignment('right');
+    sh.getRange(row, 12).setValue(p.faixa + (p.obs ? ' · ' + p.obs : '') + (p.faltam ? ' · faltam ' + p.faltam : '')).setFontSize(9).setFontColor(p.obs ? '#8a3a0a' : COR.cinza);
+    sh.getRange(row, 13).setValue(fmtR_(p.valor)).setFontWeight('bold').setHorizontalAlignment('right');
+    sh.getRange(row, 8, 1, 7).setBorder(null, null, true, null, null, null, COR.linha, SpreadsheetApp.BorderStyle.SOLID);
+  });
+  if (!com.length) sh.getRange('H15').setValue('Sem técnicos cadastrados nesta equipe.').setFontColor(COR.cinzaClaro).setFontWeight('normal');
+  sh.getRange('H19').setValue(com.length ? 'Pontos de cada técnico = pontos da equipe nos dias em que trabalhou × 2 ÷ pessoas no dia.' : '').setFontSize(8).setFontColor(COR.cinzaClaro);
+  // tabela
+  var ini = REL.dados, lr = sh.getMaxRows();
+  var area = sh.getRange(ini, 7, lr - ini + 1, REL.larg.length);
+  area.breakApart(); area.clear(); area.clearDataValidations(); area.setBackground(COR.fundo).setFontFamily(FONTE).setFontSize(10);
+  if (lr < ini + regs.length + 5) sh.insertRowsAfter(lr, ini + regs.length + 5 - lr);
+  if (!regs.length) { sh.getRange(ini, 8, 1, 7).merge().setValue('Nenhum registro desta equipe no mês.').setFontColor(COR.cinzaClaro).setHorizontalAlignment('center').setBackground(COR.branco); return; }
+  var vals = regs.map(function (r) { return [r.data, String(r.os), r.resp, r.local, r.demanda, r.pontos, false, '', r.linha]; });
+  var tab = sh.getRange(ini, 8, vals.length, 9);
+  tab.setValues(vals);
+  sh.getRange(ini, 8, vals.length, 1).setNumberFormat('dd/MM/yyyy');
+  sh.getRange(ini, 13, vals.length, 1).setNumberFormat('#,##0.##').setHorizontalAlignment('right');
+  sh.getRange(ini, 14, vals.length, 1).insertCheckboxes().setHorizontalAlignment('center').setFontColor(COR.verde);
+  var fundo = vals.map(function (v, i) { var c = i % 2 ? '#fafbfa' : COR.branco; return [c, c, c, c, c, c, c]; });
+  sh.getRange(ini, 8, vals.length, 7).setBackgrounds(fundo).setBorder(null, null, null, null, null, true, COR.linha, SpreadsheetApp.BorderStyle.SOLID).setVerticalAlignment('middle');
+  sh.getRange(ini, 8, vals.length, 5).setHorizontalAlignment('left');
+  var tot = ini + vals.length;
+  sh.getRange(tot, 8, 1, 7).setBackground('#f1f5f2').setFontWeight('bold');
+  sh.getRange(tot, 12).setValue('Total do mês'); sh.getRange(tot, 13).setValue(pts).setNumberFormat('#,##0.##').setHorizontalAlignment('right');
+  sh.getRange(tot + 1, 8, 1, 7).merge().setValue('Marque a caixinha em “VER” para abrir os detalhes da OS.').setFontSize(8).setFontColor(COR.cinzaClaro);
+}
+
+/* ============================================================
+ *  Janelas (Detalhes da OS e Relatório do mês)
+ * ============================================================ */
+function abrirDetalhesRelatorio() {
+  var sh = SpreadsheetApp.getActiveSheet(), row = sh.getActiveCell().getRow();
+  if (sh.getName() === CFG.ABA_RELATORIO && row >= REL.dados) {
+    var l = sh.getRange(row, 16).getValue(); if (l) return abrirDetalhesLinha_(Number(l), '');
+  }
+  if (sh.getName() === CFG.ABA_REGISTROS && row >= CFG.LINHA_REG) return abrirDetalhesLinha_(row, '');
+  SpreadsheetApp.getUi().alert('Selecione uma linha de OS no Relatório ou na aba Registros.');
+}
+function abrirDetalhesLinha_(linhaReg, equipe) {
+  var reg = lerRegistros_().filter(function (r) { return r.linha === linhaReg; })[0];
+  if (!reg) { SpreadsheetApp.getUi().alert('Registro não encontrado.'); return; }
+  var cad = lerCadastros_(), conf = lerConfig_();
+  var servs = String(reg.servicos || '').split('|').map(function (s) { return s.trim(); }).filter(String).map(function (s) {
+    var it = partesServico_(s); return { nome: it.nome, qtd: fmtNum_(it.qtd) + (it.un ? ' ' + it.un : ''), pontos: fmtNum_(calcularPontos_(s, '', '', cad, conf).pontos) };
+  });
+  var dados = { os: String(reg.os), equipe: reg.equipe, data: fmtData_(reg.data), resp: reg.resp, local: reg.local, demanda: reg.demanda,
+    transporte: reg.transporte, obs: reg.obs, pontos: fmtNum_(reg.pontos), servicos: servs, ocorrencias: ocorrenciasDoRegistro_(reg), alerta: reg.alerta };
+  var t = HtmlService.createTemplateFromFile('DetalhesModal');
+  t.dadosJson = JSON.stringify(dados).replace(/</g, '\\u003c');
+  SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(1000).setHeight(680), 'Detalhes da OS ' + reg.os + ' · ' + reg.equipe);
+}
+function abrirRelatorioMensal() {
+  var sh = aba_(CFG.ABA_RELATORIO);
+  var eq = String(sh.getRange('K5').getValue()), mes = MESES.indexOf(String(sh.getRange('L5').getValue())) + 1, ano = Number(sh.getRange('M5').getValue());
+  if (!eq || !mes || !ano) { SpreadsheetApp.getUi().alert('Selecione a equipe, o mês e o ano no Relatório.'); return; }
+  var cad = lerCadastros_(), conf = lerConfig_(), regsTodos = lerRegistros_();
+  var regs = regsTodos.filter(function (r) { return r.equipe === eq && r.data.getFullYear() === ano && r.data.getMonth() + 1 === mes; });
+  var serv = {}, oco = {}, tr = {}, total = 0;
+  function add(m, nome, qtd, un, pts) { var k = norm_(nome); if (!m[k]) m[k] = { desc: nome, qtd: 0, un: un || '', pontos: 0 }; m[k].qtd += qtd; m[k].pontos += pts; }
+  regs.forEach(function (r) {
+    total += r.pontos;
+    String(r.servicos || '').split('|').forEach(function (s) { s = s.trim(); if (!s) return; var it = partesServico_(s); add(serv, it.nome, it.qtd, it.un, calcularPontos_(s, '', '', cad, conf).pontos); });
+    ocorrenciasDoRegistro_(r).forEach(function (o) { add(oco, o.tipo, 1, '', calcularPontos_('', o.tipo + ':', '', cad, conf).pontos); });
+    var t = String(r.transporte || '');
+    if (t && t !== 'Não' && t !== 'Nenhum') { var mt = t.match(/^(.*)\s\(\s*(\d+)\s*viage/i); add(tr, mt ? mt[1].trim() : t, mt ? +mt[2] : 1, 'viagem', calcularPontos_('', '', t, cad, conf).pontos); }
+  });
+  function arr(m) { return Object.keys(m).map(function (k) { var x = m[k]; return { desc: x.desc, qtd: fmtNum_(x.qtd) + (x.un ? ' ' + x.un : ''), pontos: fmtNum_(x.pontos) }; }).sort(function (a, b) { return a.desc.localeCompare(b.desc); }); }
+  var com = calcComissoes_(ano, mes, regsTodos).filter(function (p) { return p.equipeBase === eq || p.equipesReforco.indexOf(eq) !== -1; })
+    .map(function (p) { return { nome: p.nome, dias: p.dias, pontos: fmtNum_(p.pontos), faixa: p.faixa, valor: fmtR_(p.valor), obs: p.obs }; });
+  var dados = { equipe: eq, periodo: MESES[mes - 1] + ' de ' + ano, os: regs.length, total: fmtNum_(total), servicos: arr(serv), ocorrencias: arr(oco), transportes: arr(tr), comissao: com };
+  var t = HtmlService.createTemplateFromFile('RelatorioMensalModal');
+  t.dadosJson = JSON.stringify(dados).replace(/</g, '\\u003c');
+  SpreadsheetApp.getUi().showModalDialog(t.evaluate().setWidth(1000).setHeight(700), 'Relatório do mês · ' + eq);
+}
+
+/* ============================================================
+ *  CADASTROS (visual mantido: só barra, menu, fonte e proteções)
+ * ============================================================ */
+function estilizarCadastros_() {
+  var sh = aba_(CFG.ABA_CAD);
+  base_(sh, 'cadastros');
+  var u22 = sh.getRange('U22'); if (norm_(u22.getValue()) === 'da aba') u22.clearContent();
+  var last = Math.max(sh.getLastRow(), 200);
+  var n = last - CFG.LINHA_CAD + 1;
+  var nomes = sh.getRange(CFG.LINHA_CAD, CFG.SERV.nome, n, 1).getValues();
+  nomes.forEach(function (r, i) { if (norm_(r[0]) === 'remover cabo sem uso') sh.getRange(CFG.LINHA_CAD + i, CFG.SERV.medida).setValue('metro'); });
+  var simNao = SpreadsheetApp.newDataValidation().requireValueInList(['Sim', 'Não'], true).setAllowInvalid(false).build();
+  [CFG.SERV.ativo, CFG.OCC.ativo, CFG.TRANSP.ativo, CFG.DEM.ativo].forEach(function (c) { sh.getRange(CFG.LINHA_CAD, c, n, 1).setDataValidation(simNao); });
+  var regra = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=AND($G8<>"",OR($L8="",$L8="Sim"),$K8="",LEFT(LOWER($I8),5)<>"metro")')
+    .setBackground('#fff4c2').setRanges([sh.getRange(CFG.LINHA_CAD, 7, n, 6)]).build();
+  var regraOc = SpreadsheetApp.newConditionalFormatRule()
+    .whenFormulaSatisfied('=AND($N8<>"",OR($R8="",$R8="Sim"),$Q8="")')
+    .setBackground('#fff4c2').setRanges([sh.getRange(CFG.LINHA_CAD, 14, n, 5)]).build();
+  sh.setConditionalFormatRules([regra, regraOc]);
+  sh.getRange('K7').setNote('Pontos por unidade. Serviços medidos em metro usam a regra da aba Configurações (ex.: 1 ponto a cada 40 m). Amarelo = ativo sem pontos.');
+  sh.getRange('J7').setNote('Valor unitário não é mais usado: a comissão sai das faixas por técnico (Equipes & Metas).');
+}
+
+/* ============================================================
+ *  REGISTROS
+ * ============================================================ */
+function estilizarRegistros_() {
+  var sh = aba_(CFG.ABA_REGISTROS);
+  if (sh.getMaxColumns() < 21) sh.insertColumnsAfter(sh.getMaxColumns(), 21 - sh.getMaxColumns());
+  sh.showColumns(7, 15);
+  base_(sh, 'registros', { congelarLinhas: 7 });
+  var topo = sh.getRange(3, 7, 4, 15); topo.breakApart(); topo.clearContent(); topo.setBackground(COR.fundo).setBorder(false, false, false, false, false, false);
+  [3, 4, 5, 6].forEach(function (r) { sh.setRowHeight(r, 58); });
+  titulo_(sh, 'G5:L5', 'Coleta de Registros', 'Tudo o que chega do app · colunas ocultas: serviços, ocorrências, observações, comissão antiga, ID e detalhes', 'G6:Q6');
+  sh.setRowHeight(7, 34);
+  var cab = sh.getRange(7, 7, 1, 15);
+  cab.setValues([['Data', 'Nº da OS', 'Equipe', 'Responsável', 'Cidade/Local', 'Demanda', 'Serviços executados', 'Ocorrências', 'Transporte de materiais', 'Observações', 'Pontos', 'Comissão (antiga)', 'ID do registro', 'Alerta', 'Detalhe ocorrências']]);
+  cabecalhoTabela_(cab); cab.setWrap(true);
+  [[7, 85], [8, 75], [9, 84], [10, 110], [11, 120], [12, 180], [15, 130], [17, 70], [20, 170]].forEach(function (x) { sh.setColumnWidth(x[0], x[1]); });
+  sh.hideColumns(13, 2); sh.hideColumns(16); sh.hideColumns(18, 2); sh.hideColumns(21);
+  var lr = Math.max(sh.getMaxRows(), 300); if (sh.getMaxRows() < 300) sh.insertRowsAfter(sh.getMaxRows(), 300 - sh.getMaxRows());
+  var dados = sh.getRange(8, 7, lr - 7, 15);
+  dados.setFontFamily(FONTE).setFontSize(10).setVerticalAlignment('middle').setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP)
+    .setBackground(COR.branco).setBorder(null, null, null, null, null, true, '#d3dad5', SpreadsheetApp.BorderStyle.DASHED);
+  sh.getRange(8, 7, lr - 7, 1).setNumberFormat('dd/MM/yyyy').setHorizontalAlignment('center');
+  sh.getRange(8, 8, lr - 7, 3).setHorizontalAlignment('center');
+  sh.getRange(8, 17, lr - 7, 1).setNumberFormat('#,##0.##').setHorizontalAlignment('right');
+  sh.getRange(8, 20, lr - 7, 1).setFontColor('#8a3a0a').setFontWeight('bold').setFontSize(9);
+  var faixa = SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=AND($H8<>"",ISEVEN(ROW()))').setBackground('#f6f8f6')
+    .setRanges([sh.getRange(8, 7, lr - 7, 15)]).build();
+  sh.setConditionalFormatRules([faixa]);
+}
+
+/* ============================================================
+ *  EQUIPES & METAS (Cadastro_Metas)
+ * ============================================================ */
+function lerEquipesAntigas_(sh) {
+  var dados = [], escala = [], faixas = null, teto = null, diaNormal = null, pin = '';
+  var migrado = !!ss_().getRangeByName('EQ_TETO');
+  if (migrado) {
+    dados = sh.getRange(CFG.LINHA_EQUIPES, 7, CFG.EQ_MAX_LINHAS, 5).getValues().filter(function (r) { return r[0]; });
+    escala = sh.getRange(CFG.ESCALA.linha, 7, CFG.ESCALA.qtd, 9).getValues().filter(function (r) { return r[0]; });
+    faixas = nr_('EQ_FAIXAS').getValues(); teto = nr_('EQ_TETO').getValue(); diaNormal = nr_('EQ_DIANORMAL').getValue();
+  } else {
+    var v = sh.getRange(7, 7, 20, 11).getValues(); // G..Q (formato antigo: G equipe, H meta, I..N resp 1..6, O ativa, P/Q PIN)
+    v.forEach(function (r) {
+      var nome = String(r[0] || '').trim(); if (!nome || norm_(nome) === 'equipe') return;
+      dados.push([nome, r[1], r[2], r[3], r[8] === '' ? 'Sim' : r[8]]);
+    });
+    pin = String(sh.getRange('Q7').getValue() || '').trim();
+  }
+  return { dados: dados, escala: escala, faixas: faixas, teto: teto, diaNormal: diaNormal, pin: pin };
+}
+function montarEquipes_(antigos) {
+  var sh = aba_(CFG.ABA_EQUIPES);
+  base_(sh, 'equipes');
+  prepararArea_(sh, 7, [130, 100, 150, 150, 90, 20, 160, 90, 120], 90);
+  sh.getRange(1, 7, 2, 9).setBackground(COR.verde);
+  var alt = { 3: 10, 4: 30, 5: 24, 6: 30, 7: 28, 22: 18, 23: 30, 24: 28 };
+  for (var r = 3; r <= 80; r++) sh.setRowHeight(r, alt[r] || 24);
+  titulo_(sh, 'G4:K4', 'Equipes & Metas', 'Duplas fixas, regras da comissão e a escala de reforços, férias e folgas', 'G5:O5');
+  // equipes
+  faixaTitulo_(sh.getRange('G6:K6'), '  Equipes (duplas fixas)');
+  var cab = sh.getRange('G7:K7'); cab.setValues([['Equipe', 'Meta (pontos)', 'Responsável 1', 'Responsável 2', 'Ativa']]); cabecalhoTabela_(cab);
+  var corpo = sh.getRange(CFG.LINHA_EQUIPES, 7, CFG.EQ_MAX_LINHAS, 5);
+  corpo.setBackground(COR.branco).setHorizontalAlignment('center').setBorder(true, true, true, true, true, true, '#c9d1cb', SpreadsheetApp.BorderStyle.DASHED);
+  if (antigos.dados.length) sh.getRange(CFG.LINHA_EQUIPES, 7, antigos.dados.length, 5).setValues(antigos.dados);
+  sh.getRange(CFG.LINHA_EQUIPES, 8, CFG.EQ_MAX_LINHAS, 1).setNumberFormat('#,##0');
+  sh.getRange(CFG.LINHA_EQUIPES, 11, CFG.EQ_MAX_LINHAS, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Sim', 'Não'], true).build());
+  // regras da comissão
+  faixaTitulo_(sh.getRange('M6:O6'), '  Regras da comissão');
+  sh.getRange('M7').setValue('Teto por técnico'); sh.getRange('N7:O7').merge().setValue(antigos.teto || 200).setNumberFormat('"R$" #,##0.00');
+  sh.getRange('M8').setValue('Pontos de um dia normal'); sh.getRange('N8:O8').merge().setValue(antigos.diaNormal || 50);
+  sh.getRange('N7:O8').setBackground(COR.editavel).setFontWeight('bold').setHorizontalAlignment('right');
+  sh.getRange('M7:O8').setBorder(null, null, true, null, null, true, '#c9d1cb', SpreadsheetApp.BorderStyle.DASHED);
+  sh.getRange('M8').setNote('Referência para calibrar os pontos: 50 ÷ quantos uma dupla faz num dia normal.');
+  var fc = sh.getRange('M10:O10'); fc.setValues([['Faixa: de (pontos)', 'até', 'Comissão']]); cabecalhoTabela_(fc);
+  var fx = antigos.faixas || [[800, 899, 75], [900, 999, 100], [1000, 1199, 150], [1200, '', 200], ['', '', ''], ['', '', '']];
+  sh.getRange('M11:O16').setValues(fx).setBackground(COR.editavel).setHorizontalAlignment('center').setBorder(true, true, true, true, true, true, '#c9d1cb', SpreadsheetApp.BorderStyle.DASHED);
+  sh.getRange('M11:N16').setNumberFormat('#,##0'); sh.getRange('O11:O16').setNumberFormat('"R$" #,##0.00');
+  sh.getRange('M17:O18').merge().setValue('Cada técnico soma os pontos da equipe nos dias em que trabalhou nela (pontos × 2 ÷ pessoas no dia). Férias e folga não pontuam.')
+    .setFontSize(8).setFontColor(COR.cinza).setWrap(true).setVerticalAlignment('top');
+  // escala
+  faixaTitulo_(sh.getRange('G23:O23'), '  Escala · reforços, férias e folgas');
+  var ce = sh.getRange('G24:O24'); ce.setValues([['Técnico', 'Tipo', 'Equipe (reforço)', 'De', 'Até', 'Observação', '', '', 'Situação']]); cabecalhoTabela_(ce);
+  sh.getRange('L24:N24').merge();
+  var L0 = CFG.ESCALA.linha, Q = CFG.ESCALA.qtd;
+  var esc = sh.getRange(L0, 7, Q, 9);
+  esc.setBackground(COR.branco).setHorizontalAlignment('center').setBorder(true, true, true, true, true, true, '#c9d1cb', SpreadsheetApp.BorderStyle.DASHED);
+  sh.getRange(L0, 12, Q, 3).mergeAcross().setHorizontalAlignment('left');
+  if (antigos.escala.length) sh.getRange(L0, 7, antigos.escala.length, 9).setValues(antigos.escala.map(function (r) { return r.slice(0, 8).concat(['']); }));
+  sh.getRange(L0, 8, Q, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Reforço', 'Férias', 'Folga'], true).build());
+  sh.getRange(L0, 10, Q, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).build()).setNumberFormat('dd/MM/yyyy');
+  var f = []; for (var i = 0; i < Q; i++) { var rr = L0 + i; f.push(['=IF(G' + rr + '="","",IF(TODAY()<J' + rr + ',"Agendado",IF(TODAY()>IF(K' + rr + '="",J' + rr + ',K' + rr + '),"Encerrado","Ativo hoje")))']); }
+  sh.getRange(L0, 15, Q, 1).setFormulas(f).setFontWeight('bold').setFontColor(COR.cinza);
+  var corTipo = function (t, c) { return SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo(t).setFontColor(c).setBold(true).setRanges([sh.getRange(L0, 8, Q, 1)]).build(); };
+  sh.setConditionalFormatRules([corTipo('Reforço', COR.azul), corTipo('Férias', '#8a3a0a'), corTipo('Folga', COR.cinza),
+    SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Ativo hoje').setFontColor(COR.verdeOk).setRanges([sh.getRange(L0, 15, Q, 1)]).build()]);
+  sh.getRange(L0 + Q + 1, 7, 2, 9).merge().setValue('Reforço: o técnico trabalha na equipe indicada nesses dias, aparece nela no app e soma os pontos dela. Férias e Folga: não aparece no app e não pontua nesses dias; o colega continua normal.')
+    .setFontSize(9).setFontColor(COR.cinza).setWrap(true).setVerticalAlignment('top');
+  var ss = ss_();
+  ss.setNamedRange('EQ_TETO', sh.getRange('N7')); ss.setNamedRange('EQ_DIANORMAL', sh.getRange('N8')); ss.setNamedRange('EQ_FAIXAS', sh.getRange('M11:O16'));
+}
+
+/* ============================================================
+ *  CONFIGURAÇÕES
+ * ============================================================ */
+function montarConfig_(pinAntigo) {
+  var ss = ss_(), sh = aba_(CFG.ABA_CONFIG), prev = {};
+  if (sh && ss.getRangeByName('CONF_NOME')) {
+    ['CONF_NOME', 'CONF_SETOR', 'CONF_LOGO', 'CONF_COR', 'CONF_APPURL', 'CONF_PIN', 'CONF_ANOTAR', 'CONF_TRANSP', 'CONF_RETRO', 'CONF_OSREP', 'CONF_PERIODO', 'CONF_EQPADRAO']
+      .forEach(function (n) { var rg = nr_(n); if (rg) prev[n] = rg.getValue(); });
+    prev.quadros = nr_('CONF_QUADROS').getValues(); prev.medidas = nr_('CONF_MEDIDAS').getValues(); prev.ajustes = nr_('CONF_AJUSTES').getValues();
+  }
+  if (!sh) sh = ss.insertSheet(CFG.ABA_CONFIG, ss.getSheets().length);
+  base_(sh, 'config');
+  prepararArea_(sh, 7, [34, 170, 150, 24, 230, 150, 110, 110], 60);
+  sh.getRange(1, 7, 2, 8).setBackground(COR.verde);
+  var alt = { 3: 10, 4: 30, 5: 24, 6: 30, 12: 18, 13: 30, 14: 26, 23: 14, 24: 18, 25: 30, 26: 30, 32: 40, 33: 14, 34: 30, 35: 28 };
+  for (var r = 3; r <= 50; r++) sh.setRowHeight(r, alt[r] || 26);
+  titulo_(sh, 'G4:K4', 'Configurações', 'Personalize a planilha e o app. Células amarelas são editáveis; o resto se ajusta sozinho.', 'G5:N5');
+  function v(n, d) { return (prev[n] === undefined || prev[n] === '') ? d : prev[n]; }
+  function linhaKV(lab, val, rowLab, rowVal, nome) {
+    lab.merge().setValue(rowLab).setFontColor(COR.cinza);
+    val.merge().setValue(rowVal).setBackground(COR.editavel).setFontWeight('bold');
+    if (nome) ss.setNamedRange(nome, val);
+  }
+  var simNao = SpreadsheetApp.newDataValidation().requireValueInList(['Sim', 'Não'], true).build();
+  // Empresa
+  faixaTitulo_(sh.getRange('G6:I6'), '  Empresa');
+  [['Nome', v('CONF_NOME', 'Pro Link Serviços'), 'CONF_NOME'], ['Setor', v('CONF_SETOR', 'Infraestrutura'), 'CONF_SETOR'],
+   ['Logo (link da imagem)', v('CONF_LOGO', 'https://i.postimg.cc/qv7HPLhx/VERDE.png'), 'CONF_LOGO'], ['Cor principal', v('CONF_COR', '#3A5940'), 'CONF_COR'],
+   ['Endereço do app', v('CONF_APPURL', 'https://teste-orcin-delta.vercel.app'), 'CONF_APPURL']]
+    .forEach(function (x, i) { linhaKV(sh.getRange(7 + i, 7, 1, 2), sh.getRange(7 + i, 9), x[0], x[1], x[2]); });
+  sh.getRange('I9:I11').setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
+  card_(sh, 'G7:I11');
+  // App
+  faixaTitulo_(sh.getRange('K6:N6'), '  App dos técnicos');
+  [['PIN do app (em branco = sem PIN)', v('CONF_PIN', pinAntigo || ''), 'CONF_PIN'], ['Botão “Anotar no caminho”', v('CONF_ANOTAR', 'Sim'), 'CONF_ANOTAR'],
+   ['Seção “Transporte de materiais”', v('CONF_TRANSP', 'Sim'), 'CONF_TRANSP'], ['Avisar data retroativa acima de (dias)', v('CONF_RETRO', 7), 'CONF_RETRO'],
+   ['Avisar OS repetida em até (dias)', v('CONF_OSREP', 30), 'CONF_OSREP']]
+    .forEach(function (x, i) { linhaKV(sh.getRange(7 + i, 11, 1, 2), sh.getRange(7 + i, 13, 1, 2), x[0], x[1], x[2]); });
+  sh.getRange('M8:M9').setDataValidation(simNao);
+  sh.getRange('M7').setNumberFormat('@');
+  card_(sh, 'K7:N11');
+  // Tela inicial
+  faixaTitulo_(sh.getRange('G13:I13'), '  Tela inicial (Painel)');
+  var hq = sh.getRange('G14:I14'); hq.setValues([['Ver', 'Quadro', 'Ordem']]); cabecalhoTabela_(hq);
+  var q = prev.quadros || QUADROS_PADRAO_.map(function (n, i) { return [true, n, i + 1]; });
+  sh.getRange('G15:I20').setValues(q);
+  sh.getRange('G15:G20').insertCheckboxes(); sh.getRange('I15:I20').setBackground(COR.editavel).setHorizontalAlignment('center');
+  sh.getRange('G15:G20').setBackground(COR.editavel).setHorizontalAlignment('center');
+  ss.setNamedRange('CONF_QUADROS', sh.getRange('G15:I20'));
+  linhaKV(sh.getRange('G21:H21'), sh.getRange('I21'), 'Período ao abrir', v('CONF_PERIODO', 'Mês atual'), 'CONF_PERIODO');
+  linhaKV(sh.getRange('G22:H22'), sh.getRange('I22'), 'Equipe ao abrir', v('CONF_EQPADRAO', 'Todas as equipes'), 'CONF_EQPADRAO');
+  sh.getRange('I21').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Mês atual', 'Todos os meses'], true).build());
+  card_(sh, 'G14:I22');
+  sh.getRange('G15:I22').setBorder(null, null, null, null, null, true, COR.linha, SpreadsheetApp.BorderStyle.SOLID);
+  // Ferramentas
+  faixaTitulo_(sh.getRange('K13:N13'), '  Ferramentas');
+  card_(sh, 'K14:N22');
+  [['btn_atualizar', 'atualizarPainel', 11, 14], ['btn_calc', 'recalcularPontos', 12, 14], ['btn_verificar', 'verificarCadastros', 11, 16], ['btn_sinc', 'sincronizarListas', 12, 16]]
+    .forEach(function (b) { inserirImagem_(sh, b[0], b[2], b[3], b[2] === 12 ? 46 : 12, 6, 196, 34, b[1]); });
+  sh.getRange('K19:N21').merge().setValue('Faixas de comissão, teto e “pontos de um dia normal” ficam na aba Equipes & Metas. Atualizar painel também roda sozinho a cada registro recebido.')
+    .setFontSize(9).setFontColor(COR.cinza).setWrap(true).setVerticalAlignment('top');
+  // Pontuação por medida
+  faixaTitulo_(sh.getRange('G25:N25'), '  Pontuação por medida · serviços e ocorrências que não são “unidade”');
+  var hm = sh.getRange('G26:N26'); hm.setValues([['Medida', '', 'Usada em', '', '', 'Como pontuar', 'Metros por ponto', 'Bloco / OS (m)']]); cabecalhoTabela_(hm); hm.setWrap(true);
+  sh.getRange('G26:H26').merge(); sh.getRange('I26:K26').merge();
+  var med = prev.medidas || [
+    ['metro', '', '', '', '', 'Por metro', 40, 100],
+    ['fibra · caixa · unidade/caixa', '', '', '', '', 'Por quantidade informada', '', ''],
+    ['viagem', '', '', '', '', 'Por quantidade informada', '', ''],
+    ['serviço · vistoria · levantamento · evento', '', '', '', '', 'Valor fixo por registro', '', ''],
+    ['cliente/unidade', '', '', '', '', 'Por quantidade informada', '', '']];
+  sh.getRange('G27:N31').setValues(med);
+  for (var i = 27; i <= 31; i++) { sh.getRange(i, 7, 1, 2).merge(); sh.getRange(i, 9, 1, 3).merge(); }
+  sh.getRange('G27:H31').setFontWeight('bold');
+  sh.getRange('I27:K31').setFontSize(8).setFontColor(COR.cinza).setWrap(true);
+  sh.getRange('L27:N31').setBackground(COR.editavel).setFontWeight('bold').setHorizontalAlignment('center');
+  sh.getRange('L27').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Por metro', 'Por bloco', 'Por OS'], true).build());
+  sh.getRange('L28:L31').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Por quantidade informada', 'Valor fixo por registro'], true).build());
+  sh.getRange('M28:N31').setBackground('#f3f3f3');
+  for (var j = 27; j <= 31; j++) sh.setRowHeight(j, 34);
+  ss.setNamedRange('CONF_MEDIDAS', sh.getRange('G27:N31'));
+  sh.getRange('G27:N31').setBorder(true, true, true, true, null, true, '#c9d1cb', SpreadsheetApp.BorderStyle.DASHED).setVerticalAlignment('middle');
+  sh.getRange('G32:N32').merge().setValue('Metro: Por metro = metros ÷ “metros por ponto” · Por bloco = blocos completos × (bloco ÷ metros por ponto) · Por OS = OS iniciadas × (OS ÷ metros por ponto). Demais: Por quantidade informada = pontos × quantidade · Valor fixo = conta 1 vez.')
+    .setFontSize(8).setFontColor(COR.cinza).setWrap(true).setVerticalAlignment('top');
+  // Ajustes por serviço
+  faixaTitulo_(sh.getRange('G34:L34'), '  Ajustes por serviço');
+  var ha = sh.getRange('G35:L35'); ha.setValues([['Serviço', '', '', '', 'Regra', 'Vale (%)']]); cabecalhoTabela_(ha); sh.getRange('G35:I35').merge();
+  var aj = prev.ajustes || [['Lançamento de cabo óptico', '', '', '', '', 100], ['Instalação de cordoalha', '', '', '', '', 100], ['Remover cabo sem uso', '', '', '', '', 50],
+    ['', '', '', '', '', ''], ['', '', '', '', '', ''], ['', '', '', '', '', ''], ['', '', '', '', '', ''], ['', '', '', '', '', '']];
+  sh.getRange('G36:L43').setValues(aj);
+  for (var k = 36; k <= 43; k++) sh.getRange(k, 7, 1, 3).merge();
+  sh.getRange('G36:I43').setBackground(COR.editavel).setFontWeight('bold');
+  sh.getRange('K36:K43').setFontSize(9).setFontColor(COR.cinza);
+  sh.getRange('L36:L43').setBackground(COR.editavel).setHorizontalAlignment('center').setFontWeight('bold');
+  sh.getRange('G36:L43').setBorder(true, true, true, true, null, true, '#c9d1cb', SpreadsheetApp.BorderStyle.DASHED);
+  ss.setNamedRange('CONF_AJUSTES', sh.getRange('G36:L43'));
+  sh.getRange('G45:N46').merge().setValue('O PIN veio de Equipes & Metas para cá. Nome e setor aparecem na barra verde de todas as abas. Logo e cor ficam guardados para o app (que hoje lê do arquivo empresa.js). O endereço do app é de onde a planilha busca as imagens do menu e dos botões.')
+    .setFontSize(9).setFontColor(COR.cinza).setWrap(true).setVerticalAlignment('top');
+  preencherUsadaEm_();
+}
+function preencherUsadaEm_() {
+  var med = nr_('CONF_MEDIDAS'), aj = nr_('CONF_AJUSTES'); if (!med) return;
+  var cad = lerCadastros_(), conf = lerConfig_();
+  var todos = cad.servicos.concat(cad.ocorrencias).filter(function (x) { return x.ativoFlag; });
+  var out = med.getValues().map(function (r) {
+    var ch = String(r[0]).split('·').map(norm_);
+    var usados = todos.filter(function (s) { var m = norm_(s.medida); return ch.indexOf(m) !== -1 || (ch.indexOf('metro') !== -1 && (m === 'm' || m.indexOf('metro') === 0)); }).map(function (s) { return s.nome; });
+    return [usados.length ? usados.join(', ') : '(nenhum ativo)'];
+  });
+  med.offset(0, 2, out.length, 1).setValues(out);
+  if (aj) {
+    var mServ = {}; cad.servicos.forEach(function (s) { mServ[norm_(s.nome)] = s; });
+    var reg = aj.getValues().map(function (r) {
+      if (!r[0]) return [''];
+      var s = mServ[norm_(r[0])]; if (!s) return ['serviço não encontrado'];
+      var m = norm_(s.medida), rg = regraMedida_(conf, s.medida), pct = num_(r[5]) === null ? 100 : num_(r[5]);
+      if (m === 'm' || m.indexOf('metro') === 0) { var mpp = (rg && rg.mpp) || 40; return [(rg ? rg.regra : 'Por metro') + ' · 1 ponto a cada ' + fmtNum_(mpp * 100 / Math.max(pct, 1)) + ' m']; }
+      return [(rg ? rg.regra : 'Por quantidade informada') + ' · ' + (num_(s.pontos) === null ? 'sem pontos' : fmtNum_(num_(s.pontos) * pct / 100) + ' pts')];
+    });
+    aj.offset(0, 4, reg.length, 1).setValues(reg);
+  }
+}
+
+/* ============================================================
+ *  INSTALAÇÃO (rode uma vez; pode rodar de novo para reaplicar o visual)
+ * ============================================================ */
+function instalarInfraControl() {
+  var ss = ss_(), props = PropertiesService.getDocumentProperties();
+  if (!props.getProperty('backupV3')) {
+    var copia = ss.copy('Cópia de segurança — ' + ss.getName() + ' — ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd-MM-yyyy HH:mm'));
+    props.setProperty('backupV3', copia.getUrl());
+  }
+  var antigos = lerEquipesAntigas_(aba_(CFG.ABA_EQUIPES));
+  montarConfig_(antigos.pin);
+  montarEquipes_(antigos);
+  estilizarCadastros_();
+  preencherUsadaEm_();
+  estilizarRegistros_();
+  recalcular_(null, null);
+  montarRelatorio_();
+  montarPainel_();
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'aoEditar') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('aoEditar').forSpreadsheet(ss).onEdit().create();
+  aplicarCabecalhos_();
+  [CFG.ABA_PAINEL, CFG.ABA_CAD, CFG.ABA_EQUIPES, CFG.ABA_RELATORIO, CFG.ABA_REGISTROS, CFG.ABA_CONFIG].forEach(function (n, i) {
+    var s = aba_(n); if (s) { ss.setActiveSheet(s); ss.moveActiveSheet(i + 1); }
+  });
+  aba_(CFG.ABA_PAINEL).activate();
+  return 'ok · cópia de segurança: ' + props.getProperty('backupV3');
+}
+
