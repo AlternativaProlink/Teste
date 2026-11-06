@@ -2,188 +2,315 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Registro de Produção — Pro Link</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>InfraControl — Registro de Produção</title>
+    <meta name="theme-color" content="#356852">
+    <meta name="application-name" content="InfraControl">
+    <meta name="apple-mobile-web-app-title" content="InfraControl">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="favicon-32.png" sizes="32x32">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <script src="empresa.js"></script>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <style>
-        * { box-sizing: border-box; }
-        body { margin: 0; background: #f0f4f2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1e293b; }
+        :root {
+            --verde: #356852;
+            --verde-esc: color-mix(in srgb, var(--verde) 82%, black);
+            --verde-claro: color-mix(in srgb, var(--verde) 11%, white);
+            --verde-claro2: color-mix(in srgb, var(--verde) 22%, white);
+            --txt: #1e293b; --txt2: #334155; --muted: #64748b; --borda: #e2e8f0; --borda2: #cbd5e1;
+            --erro: #dc2626; --erro-bg: #fef2f2; --aviso: #9a3412; --aviso-bg: #fff7ed;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; background: #f0f4f2; color: var(--txt);
+               font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
         body.noscroll { overflow: hidden; }
 
-        .app { max-width: 500px; margin: auto; background: white; min-height: 100vh; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        .app { max-width: 520px; margin: auto; background: #fff; min-height: 100vh; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
 
-        .top { background: #356852; color: white; padding: 24px 20px 20px; text-align: center; border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; }
-        .logo-container { background: white; padding: 12px 20px; border-radius: 12px; display: inline-block; margin-bottom: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .logo-container img { max-width: 180px; height: auto; display: block; }
-        .top h1 { margin: 8px 0 0; font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
-        .top p { margin: 4px 0 0; font-size: 13px; opacity: 0.9; }
-        #cfgInfo { margin-top: 6px; font-size: 11px; opacity: .8; }
+        /* ---------- cabeçalho compacto e fixo ---------- */
+        .top { position: sticky; top: 0; z-index: 50; background: var(--verde); color: #fff; padding: 10px 14px; display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.12); }
+        .logo-container { background: #fff; padding: 6px 10px; border-radius: 8px; flex: 0 0 auto; }
+        .logo-container img { height: 22px; width: auto; max-width: 110px; object-fit: contain; display: block; }
+        .top-txt { flex: 1; min-width: 0; }
+        .top h1 { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 16px; font-weight: 700; letter-spacing: -0.2px; line-height: 1.2; }
+        .top p { margin: 1px 0 0; font-size: 11px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .hist-btn { flex: 0 0 auto; background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.3); border-radius: 8px; padding: 7px 10px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .hist-btn:hover { background: rgba(255,255,255,.25); }
+        #histCount:not(:empty) { margin-left: 5px; background: #fff; color: var(--verde); border-radius: 999px; padding: 0 6px; font-size: 11px; font-weight: 700; }
 
-        main { padding: 20px; }
-        .sec { margin-bottom: 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
-        .t { font-weight: 700; color: #356852; margin-bottom: 12px; font-size: 15px; border-bottom: 2px solid #e8f0ec; padding-bottom: 6px; }
-        label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 5px; color: #334155; }
+        main { padding: 16px; flex: 1; }
+        .sec { margin-bottom: 16px; background: #fff; border: 1px solid var(--borda); border-radius: 12px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
+        .t { font-weight: 700; color: var(--verde); margin-bottom: 4px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+        .t .n { background: var(--verde-claro); color: var(--verde); border-radius: 6px; font-size: 12px; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; }
+        .sub { font-size: 12px; color: var(--muted); margin: 0 0 10px; line-height: 1.4; padding-bottom: 8px; border-bottom: 2px solid var(--verde-claro); }
+        label, .lbl { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 5px; color: var(--txt2); }
+        .req::after { content: " *"; color: var(--erro); }
+        .opt { font-weight: 400; color: var(--muted); font-size: 12px; }
 
-        input, select, textarea { width: 100%; padding: 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 14px; color: #1e293b; transition: all 0.2s; outline: none; background: #fff; font-family: inherit; }
-        input:focus, select:focus, textarea:focus { border-color: #356852; box-shadow: 0 0 0 3px rgba(53, 104, 82, 0.15); }
+        input, select, textarea { width: 100%; padding: 12px; border: 1.5px solid var(--borda2); border-radius: 8px; font-size: 15px; color: var(--txt); transition: border-color .2s, box-shadow .2s; outline: none; background: #fff; font-family: inherit; }
+        input:focus, select:focus, textarea:focus { border-color: var(--verde); box-shadow: 0 0 0 3px color-mix(in srgb, var(--verde) 18%, transparent); }
+        select:disabled { background: #f8fafc; color: #94a3b8; }
         textarea { min-height: 80px; resize: vertical; }
+        .input-error { border-color: var(--erro) !important; background-color: var(--erro-bg) !important; }
+        .ferr { color: var(--erro); font-size: 12px; margin-top: 4px; font-weight: 600; }
 
-        .card, .choice { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin: 8px 0; background: #f8faf9; }
-        .choice { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
-        .choice input { width: auto; margin: 0; }
+        /* esqueleto animado enquanto as listas carregam */
+        select.sk { color: transparent; background: linear-gradient(90deg, #eef2f0 25%, #f8faf9 50%, #eef2f0 75%); background-size: 200% 100%; animation: sh 1.2s infinite linear; border-color: var(--borda); }
+        @keyframes sh { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
-        .grid { display: grid; grid-template-columns: 1fr 110px; gap: 10px; align-items: center; margin-top: 8px; }
-        .unit { font-size: 12px; color: #64748b; font-weight: 600; background: #e8f0ec; border-radius: 6px; padding: 8px; text-align: center; }
+        /* Sim / Não lado a lado */
+        .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; background: #f1f5f9; border-radius: 10px; padding: 4px; }
+        .seg label { margin: 0; cursor: pointer; }
+        .seg input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+        .seg span { display: block; text-align: center; padding: 10px 6px; border-radius: 7px; font-size: 14px; font-weight: 600; color: var(--muted); transition: all .15s; user-select: none; }
+        .seg input:checked + span { background: var(--verde); color: #fff; box-shadow: 0 2px 6px color-mix(in srgb, var(--verde) 35%, transparent); }
+        .seg input:focus-visible + span { outline: 2px solid var(--verde); outline-offset: 2px; }
+        .seg.sm span { padding: 8px 4px; font-size: 13px; }
+        .seg.sit input[value="Pendente"]:checked + span { background: #c2410c; box-shadow: 0 2px 6px rgba(194,65,12,.3); }
+        .seg.sit input[value="Parcial"]:checked + span { background: #b45309; box-shadow: 0 2px 6px rgba(180,83,9,.3); }
+        .seg.input-error { outline: 1.5px solid var(--erro); background: var(--erro-bg) !important; }
 
-        .pick { width: 100%; text-align: left; padding: 12px; border: 1.5px dashed #94a3b8; border-radius: 8px; background: #fff; color: #64748b; font-size: 14px; cursor: pointer; font-family: inherit; }
-        .pick.sel { border-style: solid; border-color: #356852; color: #1e293b; font-weight: 600; }
-        .pick::after { content: '🔍'; float: right; }
+        /* cartões */
+        .card { border: 1px solid var(--borda); border-radius: 10px; padding: 12px; margin: 8px 0; background: #f8faf9; }
+        .row { display: flex; gap: 8px; align-items: stretch; }
+        .row > .grow { flex: 1; min-width: 0; }
+        .icon-btn { flex: 0 0 44px; border: 1px solid var(--borda); background: #fff; border-radius: 8px; color: #94a3b8; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; min-height: 44px; }
+        .icon-btn:hover { color: var(--erro); border-color: #fecaca; background: var(--erro-bg); }
+        .icon-btn svg { width: 18px; height: 18px; }
 
-        .btn { width: 100%; padding: 14px; border: 0; border-radius: 8px; font-weight: 700; cursor: pointer; transition: background 0.2s; font-size: 14px; font-family: inherit; }
+        .qwrap { position: relative; margin-top: 8px; }
+        .qwrap input { padding-right: 96px; }
+        .qwrap input::-webkit-outer-spin-button, .qwrap input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .qwrap input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+        .qwrap .unit { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 13px; color: var(--muted); font-weight: 600; pointer-events: none; max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .pick { width: 100%; text-align: left; padding: 12px 36px 12px 12px; border: 1.5px dashed #94a3b8; border-radius: 8px; background: #fff; color: var(--muted); font-size: 15px; cursor: pointer; font-family: inherit; position: relative; min-height: 46px; }
+        .pick.sel { border-style: solid; border-color: var(--verde); color: var(--txt); font-weight: 600; }
+        .pick::after { content: ""; position: absolute; right: 12px; top: 50%; width: 8px; height: 8px; border-right: 2px solid #94a3b8; border-bottom: 2px solid #94a3b8; transform: translateY(-70%) rotate(45deg); }
+
+        .btn { width: 100%; padding: 14px; border: 0; border-radius: 8px; font-weight: 700; cursor: pointer; transition: background .2s; font-size: 14px; font-family: inherit; }
         .btn:disabled { opacity: .6; cursor: not-allowed; }
-        .add { background: #e8f0ec; color: #356852; }
-        .add:hover { background: #d1e1d9; }
-        .rm { background: #fef2f2; color: #dc2626; margin-top: 10px; border: 1px solid #fecaca; padding: 10px; }
-        .send { background: #356852; color: white; font-size: 16px; margin-top: 12px; box-shadow: 0 4px 12px rgba(53, 104, 82, 0.25); }
-        .send:hover:not(:disabled) { background: #2a5442; }
+        .add { background: var(--verde-claro); color: var(--verde); }
+        .add:hover { background: var(--verde-claro2); }
+        .add.sm { padding: 10px; font-size: 13px; background: #fff; border: 1.5px dashed var(--verde-claro2); }
+        .send { background: var(--verde); color: #fff; font-size: 16px; box-shadow: 0 4px 12px color-mix(in srgb, var(--verde) 30%, transparent); }
+        .send:hover:not(:disabled) { background: var(--verde-esc); }
+        .ghost { background: #f1f5f9; color: var(--txt2); }
 
         .hidden { display: none !important; }
-        .note { font-size: 12px; color: #64748b; margin-top: 6px; line-height: 1.4; }
-        .input-error { border-color: #dc2626 !important; background-color: #fef2f2 !important; }
+        .marca { text-align: center; font-size: 11px; color: #94a3b8; padding: 4px 0 14px; letter-spacing: .3px; }
+        .marca span { margin-left: 4px; }
+        .logo-container img[src=""] { display: none; }
+        .note { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+        .vazio { font-size: 13px; color: #94a3b8; text-align: center; padding: 10px 0 4px; }
 
-        #loading { position: fixed; top: 0; left: 0; width: 100%; background: #356852; color: white; text-align: center; padding: 8px; font-size: 13px; font-weight: bold; display: none; z-index: 999; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
-        #fila { display: none; margin: 12px 20px 0; padding: 10px 12px; border-radius: 8px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font-size: 13px; font-weight: 600; cursor: pointer; }
-        #cfgErro { display: none; margin: 12px 20px 0; padding: 12px; border-radius: 8px; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; font-size: 13px; }
+        /* ocorrências */
+        .oc { background: #fff; border: 1px solid var(--borda); border-left: 4px solid var(--verde); }
+        .oc.st-Pendente { border-left-color: #c2410c; }
+        .oc.st-Parcial { border-left-color: #b45309; }
+        .oc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .oc-head b { font-size: 13px; color: var(--txt2); }
+        .oc-head .icon-btn { flex: 0 0 36px; min-height: 36px; height: 36px; }
+        .oc-servs { margin-top: 12px; padding: 10px; background: #f8faf9; border-radius: 8px; border: 1px solid var(--borda); }
+        .oc-servs .lbl { margin-top: 0; }
+        .oc-servs .card { background: #fff; margin: 6px 0; padding: 10px; }
+        .exemplos { background: var(--verde-claro); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: var(--txt2); line-height: 1.5; margin-top: 10px; }
+        .exemplos b { color: var(--verde); }
+
+        /* rodapé fixo com o botão de enviar */
+        .footer-bar { position: sticky; bottom: 0; z-index: 40; background: rgba(255,255,255,.96); backdrop-filter: blur(6px); padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--borda); box-shadow: 0 -4px 14px rgba(0,0,0,.06); }
+
+        #loading { position: fixed; top: 0; left: 0; width: 100%; background: var(--verde); color: #fff; text-align: center; padding: 8px; font-size: 13px; font-weight: bold; display: none; z-index: 2000; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+        .banner { display: none; margin: 12px 16px 0; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; }
+        #fila { background: var(--aviso-bg); border: 1px solid #fed7aa; color: var(--aviso); cursor: pointer; }
+        #cfgErro { background: var(--erro-bg); border: 1px solid #fecaca; color: #991b1b; font-weight: 500; }
         #cfgErro button { margin-top: 8px; }
+        #rascBanner { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; display: none; align-items: center; justify-content: space-between; gap: 8px; }
+        #rascBanner button { background: #fff; border: 1px solid #bfdbfe; color: #1e40af; border-radius: 6px; padding: 6px 10px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; flex: 0 0 auto; }
 
-        /* seletor de serviços */
+        #toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%) translateY(20px); background: #1e293b; color: #fff; padding: 12px 16px; border-radius: 10px; font-size: 14px; font-weight: 500; z-index: 3000; opacity: 0; pointer-events: none; transition: all .25s; max-width: calc(100% - 32px); width: max-content; text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+        #toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+        #toast.err { background: #991b1b; }
+
+        /* tela de sucesso */
+        #ok { display: none; text-align: center; padding: 40px 20px; }
+        #ok h2 { color: var(--verde); margin-bottom: 8px; }
+        #ok p { color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+        /* folhas (seletor, resumo, histórico) */
         .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.55); z-index: 1000; display: flex; align-items: flex-end; justify-content: center; }
-        .sheet { background: #fff; width: 100%; max-width: 500px; height: 88vh; border-radius: 16px 16px 0 0; display: flex; flex-direction: column; overflow: hidden; }
-        .sheet-head { display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid #e2e8f0; }
-        .sheet-head button { border: 0; background: #f1f5f9; border-radius: 8px; width: 44px; font-size: 16px; cursor: pointer; }
-        .chips { display: flex; gap: 6px; overflow-x: auto; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; -webkit-overflow-scrolling: touch; }
-        .chip { flex: 0 0 auto; border: 1px solid #cbd5e1; background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer; font-family: inherit; white-space: nowrap; }
-        .chip.on { background: #356852; border-color: #356852; color: #fff; }
+        .sheet { background: #fff; width: 100%; max-width: 520px; max-height: 90vh; border-radius: 16px 16px 0 0; display: flex; flex-direction: column; overflow: hidden; animation: up .2s ease-out; }
+        .sheet.tall { height: 88vh; }
+        @keyframes up { from { transform: translateY(30px); opacity: .5; } to { transform: none; opacity: 1; } }
+        .sheet-head { display: flex; gap: 8px; padding: 12px; border-bottom: 1px solid var(--borda); align-items: center; }
+        .sheet-head h3 { margin: 0; flex: 1; font-size: 16px; color: var(--verde); padding-left: 4px; }
+        .sheet-head button { border: 0; background: #f1f5f9; border-radius: 8px; width: 44px; height: 44px; font-size: 16px; cursor: pointer; flex: 0 0 44px; }
+        .sheet-body { flex: 1; overflow-y: auto; padding: 12px 16px 16px; -webkit-overflow-scrolling: touch; }
+        .sheet-foot { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--borda); }
+
+        .chips { display: flex; gap: 6px; overflow-x: auto; padding: 10px 12px; border-bottom: 1px solid var(--borda); -webkit-overflow-scrolling: touch; }
+        .chip { flex: 0 0 auto; border: 1px solid var(--borda2); background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer; font-family: inherit; white-space: nowrap; }
+        .chip.on { background: var(--verde); border-color: var(--verde); color: #fff; }
         .plist { flex: 1; overflow-y: auto; padding: 4px 12px 24px; -webkit-overflow-scrolling: touch; }
-        .ghead { font-size: 11px; font-weight: 700; color: #356852; text-transform: uppercase; letter-spacing: .4px; margin: 14px 0 4px; }
-        .pitem { display: block; width: 100%; text-align: left; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; margin: 5px 0; cursor: pointer; font-family: inherit; }
-        .pitem:hover:not(:disabled) { background: #f0f7f3; border-color: #356852; }
+        .ghead { font-size: 11px; font-weight: 700; color: var(--verde); text-transform: uppercase; letter-spacing: .4px; margin: 14px 0 4px; }
+        .pitem { display: block; width: 100%; text-align: left; background: #fff; border: 1px solid var(--borda); border-radius: 8px; padding: 10px 12px; margin: 5px 0; cursor: pointer; font-family: inherit; }
+        .pitem:hover:not(:disabled) { background: var(--verde-claro); border-color: var(--verde); }
         .pitem:disabled { opacity: .5; cursor: not-allowed; }
-        .pn { display: block; font-size: 14px; font-weight: 600; color: #1e293b; }
-        .pm { display: block; font-size: 11px; color: #64748b; margin-top: 2px; }
-        .tag { font-size: 10px; color: #9a3412; font-weight: 700; }
-        .empty { padding: 24px 8px; text-align: center; color: #64748b; font-size: 13px; }
+        .pn { display: block; font-size: 14px; font-weight: 600; color: var(--txt); }
+        .pm { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+        .tag { font-size: 10px; color: var(--aviso); font-weight: 700; }
+        .empty { padding: 24px 8px; text-align: center; color: var(--muted); font-size: 13px; }
+
+        /* resumo */
+        .rs-sec { margin-bottom: 14px; }
+        .rs-sec h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--verde); }
+        .rs-kv { display: grid; grid-template-columns: 110px 1fr; gap: 4px 10px; font-size: 14px; }
+        .rs-kv dt { color: var(--muted); }
+        .rs-kv dd { margin: 0; font-weight: 600; word-break: break-word; }
+        .rs-list { margin: 0; padding: 0; list-style: none; font-size: 14px; }
+        .rs-list li { padding: 8px 10px; border: 1px solid var(--borda); border-radius: 8px; margin-bottom: 6px; background: #f8faf9; }
+        .rs-list .q { float: right; font-weight: 700; color: var(--verde); margin-left: 8px; }
+        .rs-list small { display: block; color: var(--muted); margin-top: 3px; font-size: 12px; }
+        .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--verde-claro); color: var(--verde); margin-right: 4px; }
+        .pill.Pendente, .pill.fila { background: #ffedd5; color: #c2410c; }
+        .pill.Parcial { background: #fef3c7; color: #b45309; }
+
+        /* histórico */
+        .hitem { border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+        .hitem .l1 { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; font-size: 14px; }
+        .hitem .l2 { font-size: 12px; color: var(--muted); margin-top: 3px; }
 
         /* PIN */
         .pinbox { background: #fff; width: calc(100% - 40px); max-width: 360px; border-radius: 14px; padding: 20px; margin: auto; }
-        .pinbox h3 { margin: 0 0 6px; color: #356852; }
-        .pinbox p { margin: 0 0 12px; font-size: 13px; color: #64748b; }
-        #pinErro { color: #dc2626; font-size: 12px; margin-top: 6px; min-height: 16px; }
+        .pinbox h3 { margin: 0 0 6px; color: var(--verde); }
+        .pinbox p { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+        #pinErro { color: var(--erro); font-size: 12px; margin-top: 6px; min-height: 16px; }
     </style>
 </head>
 <body>
 
 <div id="loading">Enviando registro...</div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <div class="app">
     <header class="top">
         <div class="logo-container">
-            <img src="https://i.postimg.cc/qv7HPLhx/VERDE.png" alt="Pro Link Serviços">
+            <img id="logoEmpresa" src="" alt="">
         </div>
-        <h1>Registro de Produção</h1>
-        <p>Infraestrutura</p>
-        <div id="cfgInfo"></div>
+        <div class="top-txt">
+            <h1>Registro de Produção</h1>
+            <p id="cfgInfo"></p>
+        </div>
+        <button class="hist-btn" type="button" onclick="abrirHistorico()" aria-label="Meus registros" title="Meus registros">📋<span id="histCount"></span></button>
     </header>
 
-    <div id="fila" onclick="processarFila(true)"></div>
-    <div id="cfgErro">
+    <div id="fila" class="banner" onclick="processarFila(true)"></div>
+    <div id="cfgErro" class="banner">
         Não foi possível carregar as listas (equipes, serviços...). Verifique a conexão.
-        <br><button class="btn add" type="button" onclick="carregarConfig()">Tentar novamente</button>
+        <button class="btn add" type="button" onclick="carregarConfig()">Tentar novamente</button>
+    </div>
+    <div id="rascBanner" class="banner">
+        <span>📝 Rascunho anterior recuperado.</span>
+        <button type="button" onclick="descartarRascunho()">Descartar</button>
     </div>
 
     <!-- FORMULÁRIO PRINCIPAL -->
     <main id="form">
         <div class="sec">
-            <div class="t">1. Identificação</div>
+            <div class="t"><span class="n">1</span>Identificação</div>
+            <p class="sub">Campos com <span style="color:var(--erro)">*</span> são obrigatórios.</p>
 
-            <label for="numOS">Número da OS</label>
+            <label for="numOS" class="req">Número da OS</label>
             <input id="numOS" placeholder="Ex: OS-10254" autocomplete="off">
 
-            <label for="selectEquipe">Equipe</label>
-            <select id="selectEquipe" onchange="atualizarMembros()"><option value="">Carregando...</option></select>
+            <label for="selectEquipe" class="req">Equipe</label>
+            <select id="selectEquipe" class="sk" onchange="atualizarMembros()"><option value="">Carregando...</option></select>
 
-            <label for="selectResponsavel">Responsável</label>
+            <label for="selectResponsavel" class="req">Responsável</label>
             <select id="selectResponsavel" disabled>
                 <option value="">Selecione primeiro a equipe</option>
             </select>
 
-            <label for="dataAtual">Data</label>
+            <label for="dataAtual" class="req">Data</label>
             <input type="date" id="dataAtual">
 
-            <label for="localRef">Local / referência</label>
+            <label for="localRef" class="req">Local / referência</label>
             <input id="localRef" placeholder="Bairro, cidade ou referência">
         </div>
 
         <div class="sec">
-            <div class="t">2. Tipo de demanda</div>
-            <select id="selectDemanda"><option value="">Carregando...</option></select>
+            <div class="t"><span class="n">2</span>Tipo de demanda</div>
+            <label for="selectDemanda" class="req" style="margin-top:8px">Demanda</label>
+            <select id="selectDemanda" class="sk"><option value="">Carregando...</option></select>
         </div>
 
         <div class="sec">
-            <div class="t">3. Serviços realizados</div>
+            <div class="t"><span class="n">3</span>Serviços da OS</div>
+            <p class="sub">O que estava previsto na OS e foi executado.</p>
             <div id="services"></div>
-            <button class="btn add" type="button" onclick="addServico()">+ Adicionar serviço</button>
-            <div class="note">Toque em “escolher o serviço” para buscar pelo nome ou filtrar por categoria. Adicione somente os serviços executados.</div>
+            <div id="servVazio" class="vazio">Nenhum serviço adicionado.</div>
+            <button class="btn add" type="button" onclick="addServicoNovo($('services'))" style="margin-top:8px">+ Adicionar serviço</button>
         </div>
 
         <div class="sec">
-            <div class="t">4. Ocorrências / imprevistos</div>
-            <label>Houve algum imprevisto?</label>
-            <div class="choice"><input type="radio" name="i" value="n" checked onchange="tog('ib','i')"> Não</div>
-            <div class="choice"><input type="radio" name="i" value="s" onchange="tog('ib','i')"> Sim</div>
+            <div class="t"><span class="n">4</span>Imprevistos e serviços fora da OS</div>
+            <p class="sub">Tudo o que apareceu além do previsto — na execução ou no caminho.</p>
+            <div class="lbl" style="margin-top:4px">Houve algo fora do previsto?</div>
+            <div class="seg" role="radiogroup">
+                <label><input type="radio" name="i" value="n" checked onchange="togImprevisto()"><span>Não</span></label>
+                <label><input type="radio" name="i" value="s" onchange="togImprevisto()"><span>Sim</span></label>
+            </div>
             <div id="ib" class="hidden">
                 <div id="occurrences"></div>
-                <button class="btn add" type="button" onclick="addOcorrencia()" style="margin-top: 10px;">+ Adicionar ocorrência</button>
-                <div class="note">A descrição do imprevisto é obrigatória ao adicionar uma ocorrência.</div>
+                <button class="btn add" type="button" onclick="addOcorrencia()" style="margin-top:8px">+ Adicionar outra ocorrência</button>
             </div>
+            <div class="exemplos" id="exemplosImprevistos"></div>
         </div>
 
         <div class="sec" id="secTransporte">
-            <div class="t">5. Transporte de materiais</div>
-            <label>Houve transporte durante o deslocamento?</label>
-            <div class="choice"><input type="radio" name="tr" value="n" checked onchange="tog('tb','tr')"> Não</div>
-            <div class="choice"><input type="radio" name="tr" value="s" onchange="tog('tb','tr')"> Sim</div>
+            <div class="t"><span class="n">5</span>Transporte de materiais</div>
+            <div class="lbl">Houve transporte durante o deslocamento?</div>
+            <div class="seg" role="radiogroup">
+                <label><input type="radio" name="tr" value="n" checked onchange="tog('tb','tr')"><span>Não</span></label>
+                <label><input type="radio" name="tr" value="s" onchange="tog('tb','tr')"><span>Sim</span></label>
+            </div>
             <div id="tb" class="hidden">
                 <label for="selectTipoTransporte">Tipo</label>
                 <select id="selectTipoTransporte"></select>
                 <label for="qtdViagens">Quantidade de viagens</label>
                 <input type="number" id="qtdViagens" min="1" step="1" value="1" inputmode="numeric">
-                <div class="note">
-                    Só conta mais de 1 viagem se houver <b>desvio de rota</b>. Ex.: indo para Cícero Dantas, deixar material em Fátima (que faz parte da rota) = 1 viagem. Se também precisar ir a Adustina (muda a rota) = 2 viagens.
-                </div>
+                <div class="note" id="notaTransporte"></div>
             </div>
         </div>
 
         <div class="sec">
-            <div class="t">6. Observações</div>
-            <textarea id="obsGerais" placeholder="Informações adicionais, se necessário."></textarea>
+            <div class="t"><span class="n">6</span>Observações</div>
+            <textarea id="obsGerais" placeholder="Informações adicionais, se necessário." style="margin-top:8px"></textarea>
         </div>
-
-        <button class="btn send" id="btnEnviar" type="button" onclick="enviar()">Enviar registro</button>
     </main>
 
-    <div id="ok" style="display:none;text-align:center;padding:40px 20px;">
-        <h2 id="okTitulo" style="color: #356852; margin-bottom: 8px;">✓ Registro enviado</h2>
-        <p id="okTexto" style="color: #64748b; font-size: 14px; line-height: 1.5;">Lançamento gravado com sucesso.</p>
-        <button class="btn send" id="btnReenviar" type="button" onclick="processarFila(true)" style="display:none;">Tentar enviar agora</button>
-        <button class="btn add" onclick="location.reload()" style="margin-top:20px;">Novo Registro</button>
+    <div class="footer-bar" id="footer">
+        <button class="btn send" id="btnEnviar" type="button" onclick="enviar()">Revisar e enviar</button>
     </div>
+
+    <div id="ok">
+        <h2 id="okTitulo">✓ Registro enviado</h2>
+        <p id="okTexto">Lançamento gravado com sucesso.</p>
+        <button class="btn send" id="btnReenviar" type="button" onclick="processarFila(true)" style="display:none;margin-top:12px">Tentar enviar agora</button>
+        <button class="btn add" type="button" onclick="novoRegistro()" style="margin-top:16px;">Novo registro</button>
+        <button class="btn ghost" type="button" onclick="abrirHistorico()" style="margin-top:8px;">📋 Ver meus registros</button>
+    </div>
+
+    <div class="marca">InfraControl<span id="marcaVer"></span></div>
 </div>
 
-<!-- Seletor de serviços -->
+<!-- Seletor (serviços e ocorrências) -->
 <div id="picker" class="overlay hidden" onclick="if(event.target===this)fecharPicker()">
-    <div class="sheet">
+    <div class="sheet tall">
         <div class="sheet-head">
-            <input id="pSearch" type="search" placeholder="Buscar serviço (ex.: cto, poste, fusão)" autocomplete="off" oninput="renderLista()">
+            <input id="pSearch" type="search" placeholder="Buscar" autocomplete="off" oninput="renderLista()">
             <button type="button" onclick="fecharPicker()" aria-label="Fechar">✕</button>
         </div>
         <div class="chips" id="pChips"></div>
@@ -191,11 +318,37 @@
     </div>
 </div>
 
+<!-- Resumo antes de enviar -->
+<div id="resumo" class="overlay hidden">
+    <div class="sheet">
+        <div class="sheet-head">
+            <h3>Confira antes de enviar</h3>
+            <button type="button" onclick="fecharResumo(false)" aria-label="Fechar">✕</button>
+        </div>
+        <div class="sheet-body" id="resumoBody"></div>
+        <div class="sheet-foot">
+            <button class="btn ghost" type="button" onclick="fecharResumo(false)">Corrigir</button>
+            <button class="btn send" type="button" onclick="fecharResumo(true)">Confirmar e enviar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Histórico -->
+<div id="historico" class="overlay hidden" onclick="if(event.target===this)fecharHistorico()">
+    <div class="sheet">
+        <div class="sheet-head">
+            <h3>Meus registros</h3>
+            <button type="button" onclick="fecharHistorico()" aria-label="Fechar">✕</button>
+        </div>
+        <div class="sheet-body" id="histBody"></div>
+    </div>
+</div>
+
 <!-- PIN -->
 <div id="pinOverlay" class="overlay hidden" style="align-items:center;">
     <div class="pinbox">
         <h3>Acesso</h3>
-        <p>Digite o PIN para usar o aplicativo.</p>
+        <p id="pinTexto">Digite o PIN para usar o aplicativo.</p>
         <input id="pinInput" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" onkeydown="if(event.key==='Enter')confirmarPin()">
         <div id="pinErro"></div>
         <button class="btn send" type="button" onclick="confirmarPin()" style="margin-top:6px;">Entrar</button>
@@ -206,27 +359,69 @@
     // ============================================================
     //  CONFIGURAÇÃO
     // ============================================================
-    // Se criar uma nova implantação do Apps Script, troque o endereço abaixo.
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwmxS_V6JFwYZWNSPlAw0o_dyviLmxpfUAty8sPr9ejQ4h6lv6VgKZZonZRij8QH_PF/exec";
+    // Os dados da empresa (nome, logo, cor, planilha...) ficam no arquivo empresa.js.
+    const EMP = Object.assign({ nome: '', setor: '', logo: '', cor: '#356852', appsScriptUrl: '', notaTransporte: '', exemplosImprevistos: '', prefixo: 'ic' }, window.EMPRESA || {});
+    const GOOGLE_SCRIPT_URL = EMP.appsScriptUrl;
 
-    const APP_VERSAO = "2.0";
-    const LS = { config: 'pl_config_v2', pin: 'pl_pin', fila: 'pl_fila_v2', uso: 'pl_uso_v2', ultimo: 'pl_ultimo_v2' };
+    const APP_NOME = "InfraControl";
+    const APP_VERSAO = "2.2";
+    const P = EMP.prefixo || 'ic';
+    const LS = { config: P + '_config_v2', pin: P + '_pin', fila: P + '_fila_v2', uso: P + '_uso_v2', ultimo: P + '_ultimo_v2', rasc: P + '_rascunho_v1', hist: P + '_hist_v1', usoOc: P + '_uso_oc_v1' };
+
+    // aplica a identidade da empresa na tela
+    (function aplicarEmpresa() {
+        const d = document;
+        if (/^#[0-9a-f]{3,8}$/i.test(EMP.cor)) {
+            d.documentElement.style.setProperty('--verde', EMP.cor);
+            d.querySelector('meta[name="theme-color"]').setAttribute('content', EMP.cor);
+        }
+        const img = d.getElementById('logoEmpresa');
+        img.onerror = () => { d.querySelector('.logo-container').style.display = 'none'; };
+        if (EMP.logo) { img.src = EMP.logo; img.alt = EMP.nome; } else d.querySelector('.logo-container').style.display = 'none';
+        d.title = APP_NOME + (EMP.nome ? ' — ' + EMP.nome : '');
+        d.getElementById('marcaVer').textContent = 'v' + APP_VERSAO + (EMP.nome ? ' · ' + EMP.nome : '');
+        d.getElementById('pinTexto').textContent = 'Digite o PIN para usar o ' + APP_NOME + (EMP.nome ? ' da ' + EMP.nome : '') + '.';
+        const nt = d.getElementById('notaTransporte'); if (EMP.notaTransporte) nt.innerHTML = EMP.notaTransporte; else nt.remove();
+        const ex = d.getElementById('exemplosImprevistos');
+        if (EMP.exemplosImprevistos) { ex.innerHTML = '<b>Exemplos:</b> '; ex.appendChild(d.createTextNode(EMP.exemplosImprevistos)); } else ex.remove();
+    })();
     const TIMEOUT_ENVIO_MS = 30000;
     const TIMEOUT_CONFIG_MS = 15000;
     const DIAS_RETROATIVO_AVISO = 7;
+    const DIAS_OS_REPETIDA = 30;
+    const DIAS_HISTORICO = 7;
 
     // ============================================================
     //  UTILIDADES
     // ============================================================
     const $ = id => document.getElementById(id);
     function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-    function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim(); }
+    function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim(); }
     function lsGet(k, def) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch (e) { return def; } }
     function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+    function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
     function novoId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
     function showLoading(show, msg) { const l = $('loading'); if (msg) l.textContent = msg; l.style.display = show ? 'block' : 'none'; }
     function getPin() { try { return localStorage.getItem(LS.pin) || ''; } catch (e) { return ''; } }
     function setPin(p) { try { localStorage.setItem(LS.pin, p); } catch (e) {} }
+    function limpaTxt(s) { return String(s || '').replace(/\|/g, '/').replace(/\s+/g, ' ').trim(); }
+    function fmtQtd(q) { return String(Number(q)); }
+    function fmtData(iso) { const p = String(iso || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso; }
+    function hhmm(ts) { const d = new Date(ts); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+    function hojeISO() { const h = new Date(); return h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0') + '-' + String(h.getDate()).padStart(2, '0'); }
+
+    const ICON_LIXO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>';
+    function btnLixo(onclick, label) {
+        const b = el('button', 'icon-btn'); b.type = 'button'; b.innerHTML = ICON_LIXO;
+        b.setAttribute('aria-label', label || 'Remover'); b.title = label || 'Remover'; b.onclick = onclick;
+        return b;
+    }
+
+    let toastT = null;
+    function toast(msg, erro) {
+        const t = $('toast'); t.textContent = msg; t.classList.toggle('err', !!erro); t.classList.add('on');
+        clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), erro ? 4500 : 2800);
+    }
 
     async function fetchTimeout(url, opts, ms) {
         const ctrl = new AbortController();
@@ -240,6 +435,7 @@
     // ============================================================
     let cfg = { equipes: {}, ordemEquipes: [], demandas: [], servicos: [], ocorrencias: [], transportes: [], carregada: false };
     let servMap = {};
+    let pend = {};   // valores de selects vindos do rascunho, aplicados quando as listas chegam
 
     function aplicarConfig(j) {
         cfg.equipes = j.equipes || {};
@@ -251,18 +447,20 @@
         cfg.carregada = true;
         servMap = {}; cfg.servicos.forEach(s => servMap[s.n] = s);
 
+        document.querySelectorAll('select.sk').forEach(s => s.classList.remove('sk'));
         renderizarEquipes();
         renderizarDemandas();
         renderizarTransportes();
-        refrescarOcorrencias();
         refrescarServicosSelecionados();
+        refrescarOcorrencias();
     }
 
-    function infoConfig(texto) { $('cfgInfo').textContent = texto || ''; }
+    function infoConfig(texto) { $('cfgInfo').textContent = [EMP.setor || APP_NOME, texto].filter(Boolean).join(' · '); }
 
     async function carregarConfig() {
+        if (!GOOGLE_SCRIPT_URL) { $('cfgErro').style.display = 'block'; $('cfgErro').firstChild.textContent = 'App sem planilha configurada (appsScriptUrl em empresa.js).'; return; }
         const cache = lsGet(LS.config, null);
-        if (cache && !cfg.carregada) { aplicarConfig(cache); infoConfig('Usando a última lista salva…'); }
+        if (cache && !cfg.carregada) { aplicarConfig(cache); infoConfig('usando a última lista salva'); }
         $('cfgErro').style.display = 'none';
         try {
             const url = GOOGLE_SCRIPT_URL + '?action=config&pin=' + encodeURIComponent(getPin()) + '&t=' + Date.now();
@@ -272,12 +470,14 @@
             if (!j || !j.ok) throw new Error((j && j.message) || 'Resposta inválida');
             lsSet(LS.config, j);
             aplicarConfig(j);
-            const h = new Date();
-            infoConfig('Listas atualizadas às ' + String(h.getHours()).padStart(2, '0') + ':' + String(h.getMinutes()).padStart(2, '0'));
+            infoConfig('listas de ' + hhmm(Date.now()));
         } catch (err) {
             console.error('Config:', err);
-            if (!cfg.carregada) { $('cfgErro').style.display = 'block'; infoConfig(''); }
-            else infoConfig('Sem conexão — usando a última lista salva.');
+            if (!cfg.carregada) {
+                $('cfgErro').style.display = 'block'; infoConfig('');
+                document.querySelectorAll('select.sk').forEach(s => { s.classList.remove('sk'); s.options[0].text = 'Sem conexão — tente novamente'; });
+            }
+            else infoConfig('sem conexão · lista salva');
         }
     }
 
@@ -300,7 +500,8 @@
     // ---- selects ----
     function renderizarEquipes() {
         const sel = $('selectEquipe');
-        const atual = sel.value || (lsGet(LS.ultimo, {}).equipe || '');
+        const atual = sel.value || pend.equipe || (lsGet(LS.ultimo, {}).equipe || '');
+        delete pend.equipe;
         sel.innerHTML = '';
         sel.appendChild(new Option('Selecione', ''));
         cfg.ordemEquipes.forEach(eq => { if (cfg.equipes[eq]) sel.appendChild(new Option(eq, eq)); });
@@ -311,7 +512,8 @@
     function atualizarMembros() {
         const equipe = $('selectEquipe').value;
         const sel = $('selectResponsavel');
-        const antes = sel.value || (lsGet(LS.ultimo, {}).responsavel || '');
+        const antes = sel.value || pend.responsavel || (lsGet(LS.ultimo, {}).responsavel || '');
+        if (equipe) delete pend.responsavel;
         sel.innerHTML = '';
         if (!equipe) {
             sel.disabled = true;
@@ -327,11 +529,13 @@
         } else {
             sel.appendChild(new Option('(Nenhum membro cadastrado nesta equipe)', ''));
         }
+        limparErro(sel);
     }
 
     function renderizarDemandas() {
         const sel = $('selectDemanda');
-        const atual = sel.value;
+        const atual = sel.value || pend.demanda || '';
+        delete pend.demanda;
         sel.innerHTML = '';
         sel.appendChild(new Option('Selecione', ''));
         cfg.demandas.forEach(d => sel.appendChild(new Option(d, d)));
@@ -340,64 +544,105 @@
 
     function renderizarTransportes() {
         const sel = $('selectTipoTransporte');
-        const atual = sel.value;
+        const atual = sel.value || pend.trTipo || '';
+        delete pend.trTipo;
         sel.innerHTML = '';
         cfg.transportes.forEach(t => sel.appendChild(new Option(t, t)));
         if (atual && cfg.transportes.indexOf(atual) !== -1) sel.value = atual;
         $('secTransporte').classList.toggle('hidden', cfg.carregada && cfg.transportes.length === 0);
     }
 
-    function refrescarOcorrencias() {
-        document.querySelectorAll('#occurrences select').forEach(sel => {
-            const atual = sel.value;
-            preencherOcorrencias(sel);
-            if (atual && cfg.ocorrencias.indexOf(atual) !== -1) sel.value = atual;
-        });
-    }
-    function preencherOcorrencias(sel) {
-        sel.innerHTML = '';
-        sel.appendChild(new Option('Selecione a ocorrência', ''));
-        cfg.ocorrencias.forEach(o => sel.appendChild(new Option(o, o)));
-    }
-
-    // se um serviço escolhido saiu da lista, avisa o card
+    // se um serviço escolhido saiu da lista, limpa o card
     function refrescarServicosSelecionados() {
-        document.querySelectorAll('#services .card').forEach(card => {
+        document.querySelectorAll('.svc').forEach(card => {
             const nome = card.dataset.servico;
-            if (nome && !servMap[nome]) { card.dataset.servico = ''; marcarCard(card, null); }
-            else if (nome) marcarCard(card, servMap[nome]);
+            if (nome && !servMap[nome]) { card.dataset.servico = ''; marcarServico(card, null); }
+            else if (nome) marcarServico(card, servMap[nome]);
+        });
+    }
+    function refrescarOcorrencias() {
+        document.querySelectorAll('.oc').forEach(card => {
+            const tipo = card.dataset.tipo;
+            if (tipo && cfg.ocorrencias.indexOf(tipo) === -1) { card.dataset.tipo = ''; marcarTipoOc(card, ''); }
         });
     }
 
     // ============================================================
-    //  SERVIÇOS + SELETOR COM BUSCA
+    //  SERVIÇOS (usado na seção 3 e dentro de cada ocorrência)
     // ============================================================
-    function marcarCard(card, s) {
+    function marcarServico(card, s) {
         const b = card.querySelector('.pick');
         if (s) { b.textContent = s.n; b.classList.add('sel'); card.querySelector('.unit').textContent = s.u; }
-        else { b.textContent = 'Toque para escolher o serviço'; b.classList.remove('sel'); card.querySelector('.unit').textContent = '—'; }
+        else { b.textContent = 'Toque para escolher o serviço'; b.classList.remove('sel'); card.querySelector('.unit').textContent = ''; }
     }
 
-    function addServico() {
-        const d = el('div', 'card');
-        const pick = el('button', 'pick', 'Toque para escolher o serviço'); pick.type = 'button';
-        pick.onclick = () => abrirPicker(d);
-        const g = el('div', 'grid');
-        const q = el('input'); q.type = 'number'; q.min = '0'; q.step = 'any'; q.placeholder = 'Quantidade'; q.inputMode = 'decimal';
-        g.appendChild(q); g.appendChild(el('div', 'unit', '—'));
-        const rm = el('button', 'btn rm', 'Remover'); rm.type = 'button'; rm.onclick = () => d.remove();
-        d.appendChild(pick); d.appendChild(g); d.appendChild(rm);
+    function criarServico(lista, nome, qtd) {
+        const d = el('div', 'card svc');
         d.dataset.servico = '';
-        $('services').appendChild(d);
+        const row = el('div', 'row');
+        const pick = el('button', 'pick grow', 'Toque para escolher o serviço'); pick.type = 'button';
+        pick.onclick = () => abrirPicker({ modo: 'serv', excluir: usadosNaLista(lista, d), onEscolher: n => { d.dataset.servico = n; marcarServico(d, servMap[n]); pick.classList.remove('input-error'); salvarRascunho(); setTimeout(() => q.focus(), 80); } });
+        row.appendChild(pick);
+        row.appendChild(btnLixo(() => { d.remove(); atualizarVazio(); salvarRascunho(); }, 'Remover serviço'));
+        const qw = el('div', 'qwrap');
+        const q = el('input'); q.type = 'number'; q.min = '0'; q.step = 'any'; q.placeholder = 'Quantidade'; q.inputMode = 'decimal';
+        q.oninput = () => q.classList.remove('input-error');
+        qw.appendChild(q); qw.appendChild(el('span', 'unit', ''));
+        d.appendChild(row); d.appendChild(qw);
+        lista.appendChild(d);
+        if (nome) { d.dataset.servico = nome; marcarServico(d, servMap[nome] || { n: nome, u: '' }); }
+        if (qtd != null && qtd !== '') q.value = qtd;
+        atualizarVazio();
         return d;
     }
 
-    let pickerCard = null, pickerCat = 'Todos';
+    // "+ Adicionar serviço": abre a busca direto; o cartão só aparece depois de escolher
+    function addServicoNovo(lista) {
+        abrirPicker({ modo: 'serv', excluir: usadosNaLista(lista, null), onEscolher: n => {
+            const d = criarServico(lista, n);
+            salvarRascunho();
+            setTimeout(() => { d.querySelector('input[type="number"]').focus(); }, 80);
+        } });
+    }
 
-    function abrirPicker(card) {
-        if (!cfg.servicos.length) { alert('A lista de serviços ainda não foi carregada. Verifique a conexão e tente novamente.'); return; }
-        pickerCard = card; pickerCat = 'Todos';
+    function usadosNaLista(lista, exceto) {
+        const s = new Set();
+        lista.querySelectorAll(':scope > .svc').forEach(c => { if (c !== exceto && c.dataset.servico) s.add(c.dataset.servico); });
+        return s;
+    }
+
+    function atualizarVazio() {
+        $('servVazio').classList.toggle('hidden', $('services').children.length > 0);
+    }
+
+    // lê os serviços de uma lista; retorna null se algum estiver inválido
+    function lerServicos(lista) {
+        const out = []; let ok = true;
+        lista.querySelectorAll(':scope > .svc').forEach(card => {
+            const nome = card.dataset.servico;
+            const qtd = card.querySelector('input[type="number"]');
+            const pk = card.querySelector('.pick');
+            pk.classList.remove('input-error'); qtd.classList.remove('input-error');
+            if (!nome) { ok = false; pk.classList.add('input-error'); return; }
+            const v = parseFloat(qtd.value);
+            if (!(v > 0)) { ok = false; qtd.classList.add('input-error'); return; }
+            out.push({ n: nome, q: v, u: (servMap[nome] && servMap[nome].u) || 'unidade' });
+        });
+        return ok ? out : null;
+    }
+
+    // ============================================================
+    //  SELETOR COM BUSCA (serviços e tipos de ocorrência)
+    // ============================================================
+    let pk = null, pickerCat = 'Todos';
+
+    function abrirPicker(opts) {
+        if (opts.modo === 'serv' && !cfg.servicos.length) return toast('A lista de serviços ainda não foi carregada. Verifique a conexão.', true);
+        if (opts.modo === 'oc' && !cfg.ocorrencias.length) return toast('A lista de ocorrências ainda não foi carregada. Verifique a conexão.', true);
+        pk = opts; pickerCat = 'Todos';
         $('pSearch').value = '';
+        $('pSearch').placeholder = opts.modo === 'oc' ? 'O que foi encontrado? (ex.: cabo, cto, fusão)' : 'Buscar serviço (ex.: cto, poste, fusão)';
+        $('pChips').classList.toggle('hidden', opts.modo !== 'serv');
         $('picker').classList.remove('hidden');
         document.body.classList.add('noscroll');
         renderChips(); renderLista();
@@ -406,9 +651,14 @@
     function fecharPicker() {
         $('picker').classList.add('hidden');
         document.body.classList.remove('noscroll');
-        pickerCard = null;
+        pk = null;
     }
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('picker').classList.contains('hidden')) fecharPicker(); });
+    document.addEventListener('keydown', e => {
+        if (e.key !== 'Escape') return;
+        if (!$('picker').classList.contains('hidden')) fecharPicker();
+        else if (!$('resumo').classList.contains('hidden')) fecharResumo(false);
+        else if (!$('historico').classList.contains('hidden')) fecharHistorico();
+    });
 
     function categorias() {
         const out = [];
@@ -417,78 +667,340 @@
     }
     function renderChips() {
         const box = $('pChips'); box.innerHTML = '';
+        if (!pk || pk.modo !== 'serv') return;
         ['Todos'].concat(categorias()).forEach(c => {
             const b = el('button', 'chip' + (c === pickerCat ? ' on' : ''), c); b.type = 'button';
             b.onclick = () => { pickerCat = c; renderChips(); renderLista(); $('pList').scrollTop = 0; };
             box.appendChild(b);
         });
     }
-    function usadosOutros() {
-        const s = new Set();
-        document.querySelectorAll('#services .card').forEach(c => { if (c !== pickerCard && c.dataset.servico) s.add(c.dataset.servico); });
-        return s;
+    function maisUsados(chave, existe) {
+        const uso = lsGet(chave, {});
+        return Object.keys(uso).filter(existe).sort((a, b) => uso[b] - uso[a]).slice(0, 6);
     }
-    function maisUsados() {
-        const uso = lsGet(LS.uso, {});
-        return Object.keys(uso).filter(n => servMap[n]).sort((a, b) => uso[b] - uso[a]).slice(0, 6).map(n => servMap[n]);
-    }
+
     function renderLista() {
+        if (!pk) return;
         const box = $('pList'); box.innerHTML = '';
         const termos = norm($('pSearch').value).split(' ').filter(Boolean);
-        const usados = usadosOutros();
-        const lista = cfg.servicos.filter(s => (pickerCat === 'Todos' || s.c === pickerCat) && termos.every(t => s._k.indexOf(t) !== -1));
-        if (!lista.length) { box.appendChild(el('div', 'empty', 'Nenhum serviço encontrado. Tente outra palavra ou escolha outra categoria.')); return; }
+        const excluir = pk.excluir || new Set();
 
-        const item = s => {
+        const item = (nome, meta) => {
             const b = el('button', 'pitem'); b.type = 'button';
-            b.appendChild(el('span', 'pn', s.n));
-            const m = el('span', 'pm', s.u + ' · ' + s.c);
-            if (usados.has(s.n)) { b.disabled = true; m.appendChild(document.createTextNode(' · ')); m.appendChild(el('span', 'tag', 'já adicionado')); }
-            b.appendChild(m);
-            b.onclick = () => escolherServico(s.n);
+            b.appendChild(el('span', 'pn', nome));
+            const m = el('span', 'pm', meta || '');
+            if (excluir.has(nome)) { b.disabled = true; if (meta) m.appendChild(document.createTextNode(' · ')); m.appendChild(el('span', 'tag', 'já adicionado')); }
+            if (meta || excluir.has(nome)) b.appendChild(m);
+            b.onclick = () => { const cb = pk.onEscolher; fecharPicker(); cb(nome); };
             box.appendChild(b);
         };
 
+        if (pk.modo === 'oc') {
+            const lista = cfg.ocorrencias.filter(o => termos.every(t => norm(o).indexOf(t) !== -1));
+            if (!lista.length) { box.appendChild(el('div', 'empty', 'Nada encontrado. Se não estiver na lista, escolha "Outro imprevisto" e descreva.')); return; }
+            if (!termos.length) {
+                const fav = maisUsados(LS.usoOc, n => cfg.ocorrencias.indexOf(n) !== -1);
+                if (fav.length) { box.appendChild(el('div', 'ghead', '★ Mais usados')); fav.forEach(n => item(n)); box.appendChild(el('div', 'ghead', 'Todos')); }
+            }
+            lista.forEach(n => item(n));
+            return;
+        }
+
+        const lista = cfg.servicos.filter(s => (pickerCat === 'Todos' || s.c === pickerCat) && termos.every(t => s._k.indexOf(t) !== -1));
+        if (!lista.length) { box.appendChild(el('div', 'empty', 'Nenhum serviço encontrado. Tente outra palavra ou escolha outra categoria.')); return; }
+        const meta = s => s.u + ' · ' + s.c;
         if (!termos.length && pickerCat === 'Todos') {
-            const fav = maisUsados();
-            if (fav.length) { box.appendChild(el('div', 'ghead', '★ Mais usados')); fav.forEach(item); }
+            const fav = maisUsados(LS.uso, n => !!servMap[n]);
+            if (fav.length) { box.appendChild(el('div', 'ghead', '★ Mais usados')); fav.forEach(n => item(n, meta(servMap[n]))); }
         }
         if (pickerCat === 'Todos') {
             categorias().forEach(cat => {
                 const itens = lista.filter(s => s.c === cat);
                 if (!itens.length) return;
                 box.appendChild(el('div', 'ghead', cat));
-                itens.forEach(item);
+                itens.forEach(s => item(s.n, meta(s)));
             });
         } else {
-            lista.forEach(item);
+            lista.forEach(s => item(s.n, meta(s)));
         }
-    }
-    function escolherServico(nome) {
-        if (!pickerCard) return;
-        const card = pickerCard;
-        card.dataset.servico = nome;
-        marcarCard(card, servMap[nome]);
-        card.querySelector('.pick').classList.remove('input-error');
-        fecharPicker();
-        setTimeout(() => card.querySelector('input[type="number"]').focus(), 80);
     }
 
     // ============================================================
-    //  OCORRÊNCIAS / TOGGLES
+    //  OCORRÊNCIAS / SERVIÇOS FORA DA OS
     // ============================================================
-    function addOcorrencia() {
-        const d = el('div', 'card');
-        const sel = el('select'); preencherOcorrencias(sel);
-        const ta = el('textarea'); ta.placeholder = 'Descrição detalhada do imprevisto (Obrigatório)...'; ta.style.cssText = 'margin-top: 8px; min-height: 60px;';
-        const rm = el('button', 'btn rm', 'Remover'); rm.type = 'button'; rm.onclick = () => d.remove();
-        d.appendChild(sel); d.appendChild(ta); d.appendChild(rm);
+    function segmento(nome, opcoes, valor, extraCls) {
+        const box = el('div', 'seg sm' + (extraCls ? ' ' + extraCls : ''));
+        box.setAttribute('role', 'radiogroup');
+        opcoes.forEach(o => {
+            const l = el('label');
+            const r = el('input'); r.type = 'radio'; r.name = nome; r.value = o.v; if (o.v === valor) r.checked = true;
+            l.appendChild(r); l.appendChild(el('span', null, o.t));
+            box.appendChild(l);
+        });
+        return box;
+    }
+    function valorSeg(card, nome) { const r = card.querySelector('input[name="' + nome + '"]:checked'); return r ? r.value : ''; }
+
+    function marcarTipoOc(card, tipo) {
+        const b = card.querySelector('.pick-oc');
+        if (tipo) { b.textContent = tipo; b.classList.add('sel'); }
+        else { b.textContent = 'Toque para escolher o que encontrou'; b.classList.remove('sel'); }
+    }
+
+    function renumerarOcorrencias() {
+        document.querySelectorAll('#occurrences .oc').forEach((c, i) => { c.querySelector('.oc-head b').textContent = 'Ocorrência ' + (i + 1); });
+    }
+
+    function addOcorrencia(dados) {
+        dados = dados || {};
+        const id = novoId();
+        const d = el('div', 'card oc');
+        d.dataset.tipo = '';
+
+        const head = el('div', 'oc-head');
+        head.appendChild(el('b', null, 'Ocorrência'));
+        head.appendChild(btnLixo(() => {
+            d.remove(); renumerarOcorrencias();
+            if (!document.querySelector('#occurrences .oc')) { document.querySelector('input[name="i"][value="n"]').checked = true; togImprevisto(); }
+            salvarRascunho();
+        }, 'Remover ocorrência'));
+        d.appendChild(head);
+
+        d.appendChild(el('div', 'lbl req', 'O que foi encontrado?'));
+        const pick = el('button', 'pick pick-oc', ''); pick.type = 'button';
+        pick.onclick = () => abrirPicker({ modo: 'oc', onEscolher: n => { d.dataset.tipo = n; marcarTipoOc(d, n); pick.classList.remove('input-error'); salvarRascunho(); } });
+        d.appendChild(pick);
+
+        d.appendChild(el('div', 'lbl req', 'Quando?'));
+        d.appendChild(segmento('quando_' + id, [{ v: 'Durante a OS', t: 'Durante a OS' }, { v: 'No deslocamento', t: 'No deslocamento' }], dados.quando || ''));
+
+        d.appendChild(el('div', 'lbl req', 'Como ficou?'));
+        const sit = segmento('sit_' + id, [{ v: 'Resolvido', t: 'Resolvido' }, { v: 'Parcial', t: 'Parcial' }, { v: 'Pendente', t: 'Pendente' }], dados.situacao || '', 'sit');
+        d.appendChild(sit);
+        const dicaSit = el('div', 'note', '');
+        d.appendChild(dicaSit);
+
+        const lblLocal = el('label'); lblLocal.innerHTML = 'Onde exatamente? <span class="opt">(rua, nº do poste, identificação da CTO/CEO)</span>';
+        const local = el('input', 'oc-local'); local.placeholder = 'Ex.: Rua da Matriz, CTO-045';
+        local.id = 'loc_' + id; lblLocal.htmlFor = local.id;
+        if (dados.local) local.value = dados.local;
+        d.appendChild(lblLocal); d.appendChild(local);
+
+        const lblDesc = el('label', 'req', 'O que foi encontrado e o que foi feito');
+        const ta = el('textarea', 'oc-desc'); ta.id = 'desc_' + id; lblDesc.htmlFor = ta.id;
+        ta.placeholder = 'Ex.: CTO-045 no caminho estava sem as fusões; foi baixada, fusionada e reinstalada.';
+        ta.style.minHeight = '70px';
+        ta.oninput = () => ta.classList.remove('input-error');
+        if (dados.desc) ta.value = dados.desc;
+        d.appendChild(lblDesc); d.appendChild(ta);
+
+        const sv = el('div', 'oc-servs');
+        sv.appendChild(el('div', 'lbl', 'Serviços feitos nesta ocorrência'));
+        const lista = el('div', 'oc-lista');
+        sv.appendChild(lista);
+        const addB = el('button', 'btn add sm', '+ Serviço desta ocorrência'); addB.type = 'button';
+        addB.onclick = () => addServicoNovo(lista);
+        sv.appendChild(addB);
+        sv.appendChild(el('div', 'note', 'Ex.: baixar CTO, reposicionar cabo, instalar ferragem. Entram na produção junto com os serviços da OS.'));
+        d.appendChild(sv);
+
+        const atualizarSit = () => {
+            const v = valorSeg(d, 'sit_' + id);
+            d.classList.remove('st-Resolvido', 'st-Parcial', 'st-Pendente');
+            if (v) d.classList.add('st-' + v);
+            dicaSit.textContent = v === 'Pendente' ? 'Pendente = precisa voltar ou abrir outra OS. Explique na descrição o que falta.'
+                : v === 'Parcial' ? 'Parcial = foi feito em parte. Explique na descrição o que ainda falta.' : '';
+        };
+        d.addEventListener('change', e => {
+            if (e.target.name && e.target.name.indexOf('sit_') === 0) atualizarSit();
+            if (e.target.type === 'radio') e.target.closest('.seg').classList.remove('input-error');
+        });
+
         $('occurrences').appendChild(d);
+        if (dados.tipo) { d.dataset.tipo = dados.tipo; marcarTipoOc(d, dados.tipo); } else marcarTipoOc(d, '');
+        (dados.servicos || []).forEach(s => criarServico(lista, s.n, s.q));
+        atualizarSit();
+        renumerarOcorrencias();
+        return d;
+    }
+
+    function togImprevisto() {
+        const sim = document.querySelector('input[name="i"]:checked').value === 's';
+        $('ib').classList.toggle('hidden', !sim);
+        if (sim && !document.querySelector('#occurrences .oc')) addOcorrencia();
+        salvarRascunho();
     }
 
     function tog(id, n) {
         $(id).classList.toggle('hidden', document.querySelector('input[name=' + n + ']:checked').value !== 's');
     }
+
+    // lê todas as ocorrências; marca erros; retorna { lista, erro }
+    function lerOcorrencias() {
+        const out = []; let erro = '';
+        document.querySelectorAll('#occurrences .oc').forEach(card => {
+            const id = card.querySelector('input[name^="quando_"]').name.slice(7);
+            const pick = card.querySelector('.pick-oc');
+            const segQ = card.querySelector('input[name^="quando_"]').closest('.seg');
+            const segS = card.querySelector('input[name^="sit_"]').closest('.seg');
+            const ta = card.querySelector('.oc-desc');
+            [pick, segQ, segS, ta].forEach(x => x.classList.remove('input-error'));
+
+            const tipo = card.dataset.tipo;
+            const quando = valorSeg(card, 'quando_' + id);
+            const situacao = valorSeg(card, 'sit_' + id);
+            const desc = ta.value.trim();
+            const local = card.querySelector('.oc-local').value.trim();
+            if (!tipo) { pick.classList.add('input-error'); erro = erro || 'Em cada ocorrência, escolha o que foi encontrado.'; }
+            if (!quando) { segQ.classList.add('input-error'); erro = erro || 'Informe se a ocorrência foi durante a OS ou no deslocamento.'; }
+            if (!situacao) { segS.classList.add('input-error'); erro = erro || 'Informe como ficou cada ocorrência (resolvido, parcial ou pendente).'; }
+            if (!desc) { ta.classList.add('input-error'); erro = erro || 'Descreva o que foi encontrado e o que foi feito em cada ocorrência.'; }
+            const servs = lerServicos(card.querySelector('.oc-lista'));
+            if (servs === null) erro = erro || 'Nos serviços da ocorrência, escolha o serviço e informe a quantidade.';
+            out.push({ tipo, quando, situacao, local, desc, servicos: servs || [], card });
+        });
+        return { lista: out, erro };
+    }
+
+    // ============================================================
+    //  VALIDAÇÃO DOS CAMPOS OBRIGATÓRIOS
+    // ============================================================
+    function marcarErro(campo, msg) {
+        campo.classList.add('input-error');
+        let m = campo.nextElementSibling;
+        if (!m || !m.classList.contains('ferr')) { m = el('div', 'ferr'); campo.insertAdjacentElement('afterend', m); }
+        m.textContent = msg;
+    }
+    function limparErro(campo) {
+        campo.classList.remove('input-error');
+        const m = campo.nextElementSibling;
+        if (m && m.classList.contains('ferr')) m.remove();
+    }
+    ['numOS', 'selectEquipe', 'selectResponsavel', 'dataAtual', 'localRef', 'selectDemanda'].forEach(id => {
+        const c = $(id);
+        c.addEventListener('input', () => limparErro(c));
+        c.addEventListener('change', () => limparErro(c));
+    });
+    function irPara(elem) {
+        if (!elem) return;
+        const y = elem.getBoundingClientRect().top + window.scrollY - 90;
+        window.scrollTo({ top: y, behavior: 'smooth' });
+        if (elem.focus) setTimeout(() => { try { elem.focus({ preventScroll: true }); } catch (e) {} }, 300);
+    }
+
+    // ============================================================
+    //  RASCUNHO AUTOMÁTICO
+    // ============================================================
+    let rascT = null, restaurando = false, semRascunho = false;
+    function estadoForm() {
+        const servs = lista => [...lista.querySelectorAll(':scope > .svc')].map(c => ({ n: c.dataset.servico || '', q: c.querySelector('input[type="number"]').value }));
+        return {
+            numOS: $('numOS').value, equipe: $('selectEquipe').value, responsavel: $('selectResponsavel').value,
+            data: $('dataAtual').value, local: $('localRef').value, demanda: $('selectDemanda').value,
+            servicos: servs($('services')),
+            imprevisto: document.querySelector('input[name="i"]:checked').value,
+            ocorrencias: [...document.querySelectorAll('#occurrences .oc')].map(c => {
+                const id = c.querySelector('input[name^="quando_"]').name.slice(7);
+                return { tipo: c.dataset.tipo || '', quando: valorSeg(c, 'quando_' + id), situacao: valorSeg(c, 'sit_' + id),
+                         local: c.querySelector('.oc-local').value, desc: c.querySelector('.oc-desc').value, servicos: servs(c.querySelector('.oc-lista')) };
+            }),
+            tr: document.querySelector('input[name="tr"]:checked').value,
+            trTipo: $('selectTipoTransporte').value, trQtd: $('qtdViagens').value,
+            obs: $('obsGerais').value,
+            salvoEm: Date.now()
+        };
+    }
+    function formTemConteudo(s) {
+        return !!(s.numOS.trim() || s.local.trim() || s.obs.trim() || s.servicos.length || s.ocorrencias.length || s.demanda);
+    }
+    function salvarRascunho() {
+        if (restaurando) return;
+        clearTimeout(rascT);
+        rascT = setTimeout(() => {
+            const s = estadoForm();
+            if (formTemConteudo(s)) lsSet(LS.rasc, s); else lsDel(LS.rasc);
+        }, 400);
+    }
+    $('form').addEventListener('input', salvarRascunho);
+    $('form').addEventListener('change', salvarRascunho);
+    window.addEventListener('pagehide', () => { clearTimeout(rascT); if (!semRascunho && $('form').style.display !== 'none') { const s = estadoForm(); if (formTemConteudo(s)) lsSet(LS.rasc, s); } });
+
+    function restaurarRascunho() {
+        const s = lsGet(LS.rasc, null);
+        if (!s || !formTemConteudo(Object.assign({ numOS: '', local: '', obs: '', servicos: [], ocorrencias: [], demanda: '' }, s))) return false;
+        restaurando = true;
+        try {
+            $('numOS').value = s.numOS || '';
+            if (s.data) $('dataAtual').value = s.data;
+            $('localRef').value = s.local || '';
+            $('obsGerais').value = s.obs || '';
+            pend = { equipe: s.equipe, responsavel: s.responsavel, demanda: s.demanda, trTipo: s.trTipo };
+            (s.servicos || []).forEach(x => criarServico($('services'), x.n, x.q));
+            if (s.imprevisto === 's' && (s.ocorrencias || []).length) {
+                document.querySelector('input[name="i"][value="s"]').checked = true;
+                $('ib').classList.remove('hidden');
+                s.ocorrencias.forEach(o => addOcorrencia(o));
+            }
+            if (s.tr === 's') { document.querySelector('input[name="tr"][value="s"]').checked = true; tog('tb', 'tr'); if (s.trQtd) $('qtdViagens').value = s.trQtd; }
+        } finally { restaurando = false; }
+        $('rascBanner').style.display = 'flex';
+        return true;
+    }
+    function descartarRascunho() {
+        semRascunho = true; clearTimeout(rascT);
+        lsDel(LS.rasc);
+        location.reload();
+    }
+    function novoRegistro() {
+        semRascunho = true; clearTimeout(rascT);
+        lsDel(LS.rasc);
+        location.reload();
+    }
+
+    // ============================================================
+    //  HISTÓRICO NO APARELHO ("meus registros")
+    // ============================================================
+    function histLer() {
+        const lim = Date.now() - 45 * 86400000;
+        return lsGet(LS.hist, []).filter(h => h.criadoEm > lim);
+    }
+    function histAdicionar(h) { const l = histLer(); l.push(h); lsSet(LS.hist, l.slice(-200)); atualizarContHist(); }
+    function atualizarContHist() {
+        const hoje = hojeISO();
+        const n = histLer().filter(h => h.data === hoje || new Date(h.criadoEm).toDateString() === new Date().toDateString()).length;
+        $('histCount').textContent = n ? String(n) : '';
+        $('histCount').parentElement.title = n ? n + (n === 1 ? ' registro hoje' : ' registros hoje') : 'Meus registros';
+    }
+    function abrirHistorico() {
+        const box = $('histBody'); box.innerHTML = '';
+        const naFila = new Set(filaLer().map(i => i.id));
+        const lim = Date.now() - DIAS_HISTORICO * 86400000;
+        const lista = histLer().filter(h => h.criadoEm > lim).sort((a, b) => b.criadoEm - a.criadoEm);
+        if (!lista.length) box.appendChild(el('div', 'empty', 'Nenhum registro lançado neste aparelho nos últimos ' + DIAS_HISTORICO + ' dias.'));
+        const hojeStr = new Date().toDateString();
+        let grupo = '';
+        lista.forEach(h => {
+            const g = new Date(h.criadoEm).toDateString() === hojeStr ? 'Hoje' : 'Dias anteriores';
+            if (g !== grupo) { grupo = g; box.appendChild(el('div', 'ghead', g)); }
+            const it = el('div', 'hitem');
+            const l1 = el('div', 'l1');
+            l1.appendChild(el('span', null, h.os));
+            const st = el('span', 'pill' + (naFila.has(h.id) ? ' fila' : ''), naFila.has(h.id) ? '⏳ Aguardando envio' : '✓ Enviado');
+            l1.appendChild(st);
+            it.appendChild(l1);
+            it.appendChild(el('div', 'l2', fmtData(h.data) + ' · ' + h.demanda + ' · ' + h.nServ + (h.nServ === 1 ? ' serviço' : ' serviços') + (h.nOc ? ' · ' + h.nOc + (h.nOc === 1 ? ' ocorrência' : ' ocorrências') : '') + ' · lançado às ' + hhmm(h.criadoEm)));
+            box.appendChild(it);
+        });
+        if (naFila.size) {
+            const b = el('button', 'btn send', 'Tentar enviar pendentes agora'); b.type = 'button'; b.style.marginTop = '8px';
+            b.onclick = async () => { await processarFila(true); abrirHistorico(); };
+            box.appendChild(b);
+        }
+        box.appendChild(el('div', 'note', 'Mostra só o que foi lançado neste aparelho.'));
+        $('historico').classList.remove('hidden');
+        document.body.classList.add('noscroll');
+    }
+    function fecharHistorico() { $('historico').classList.add('hidden'); document.body.classList.remove('noscroll'); }
 
     // ============================================================
     //  FILA DE ENVIO (nada se perde: salva no aparelho antes de enviar)
@@ -556,11 +1068,12 @@
             if (manual && !filaLer().length) {
                 const t = $('okTitulo');
                 if ($('ok').style.display === 'block') {
-                    t.textContent = '✓ Registro enviado'; t.style.color = '#356852';
+                    t.textContent = '✓ Registro enviado'; t.style.color = '';
                     $('okTexto').textContent = 'Lançamento gravado com sucesso.';
                     $('btnReenviar').style.display = 'none';
                 }
             }
+            if (manual) toast(filaLer().length ? 'Ainda sem conexão. Tentaremos de novo automaticamente.' : '✓ Pendentes enviados.', !!filaLer().length);
         } finally {
             processando = false;
             showLoading(false);
@@ -573,15 +1086,77 @@
     setInterval(() => processarFila(false), 25000);
 
     // ============================================================
+    //  RESUMO ANTES DE ENVIAR
+    // ============================================================
+    let resumoResolve = null;
+    function mostrarResumo(r) {
+        const b = $('resumoBody'); b.innerHTML = '';
+        const sec = (titulo) => { const s = el('div', 'rs-sec'); s.appendChild(el('h4', null, titulo)); b.appendChild(s); return s; };
+
+        const s1 = sec('Identificação');
+        const dl = el('dl', 'rs-kv');
+        [['OS', r.numOS], ['Equipe', r.equipe], ['Responsável', r.responsavel], ['Data', fmtData(r.data)], ['Local', r.local], ['Demanda', r.demanda]]
+            .forEach(([k, v]) => { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v)); });
+        s1.appendChild(dl);
+
+        const servLi = (ul, s) => { const li = el('li'); li.appendChild(el('span', 'q', fmtQtd(s.q) + ' ' + s.u)); li.appendChild(document.createTextNode(s.n)); ul.appendChild(li); };
+        const s2 = sec('Serviços da OS');
+        if (r.servicosOS.length) { const ul = el('ul', 'rs-list'); r.servicosOS.forEach(s => servLi(ul, s)); s2.appendChild(ul); }
+        else s2.appendChild(el('div', 'note', 'Nenhum.'));
+
+        if (r.ocorrencias.length) {
+            const s3 = sec('Imprevistos / fora da OS');
+            const ul = el('ul', 'rs-list');
+            r.ocorrencias.forEach(o => {
+                const li = el('li');
+                li.appendChild(el('span', 'pill ' + o.situacao, o.situacao));
+                li.appendChild(el('span', 'pill', o.quando));
+                li.appendChild(el('div', null, o.tipo)).style.cssText = 'font-weight:700;margin-top:4px';
+                li.appendChild(el('small', null, (o.local ? o.local + ' — ' : '') + o.desc));
+                if (o.servicos.length) li.appendChild(el('small', null, 'Serviços: ' + o.servicos.map(s => s.n + ' (' + fmtQtd(s.q) + ' ' + s.u + ')').join('; ')));
+                ul.appendChild(li);
+            });
+            s3.appendChild(ul);
+        }
+
+        const s4 = sec('Transporte');
+        s4.appendChild(el('div', null, r.transporte));
+        if (r.obs.trim()) { const s5 = sec('Observações'); s5.appendChild(el('div', null, r.obs)); }
+
+        $('resumo').classList.remove('hidden');
+        document.body.classList.add('noscroll');
+        $('resumoBody').scrollTop = 0;
+        return new Promise(res => { resumoResolve = res; });
+    }
+    function fecharResumo(ok) {
+        $('resumo').classList.add('hidden');
+        document.body.classList.remove('noscroll');
+        if (resumoResolve) { const r = resumoResolve; resumoResolve = null; r(ok); }
+    }
+
+    // ============================================================
     //  ENVIO
     // ============================================================
-    function fmtQtd(q) { return String(Number(q)); }
+    function somarServicos(listas) {
+        const tot = {}, ordem = [];
+        listas.forEach(l => l.forEach(s => { if (!(s.n in tot)) { tot[s.n] = 0; ordem.push(s.n); } tot[s.n] += s.q; }));
+        return ordem.map(n => ({ n, q: Math.round(tot[n] * 1000) / 1000, u: (servMap[n] && servMap[n].u) || 'unidade' }));
+    }
+    function txtServ(s) { return s.n + ' (' + fmtQtd(s.q) + ' ' + s.u + ')'; }
 
     async function enviar() {
         const btn = $('btnEnviar');
         if (btn.disabled) return;
+        if (!cfg.carregada) return toast('As listas ainda não foram carregadas. Aguarde alguns segundos ou verifique a conexão.', true);
 
-        if (!cfg.carregada) return alert('As listas ainda não foram carregadas. Aguarde alguns segundos ou verifique a conexão.');
+        // 1) obrigatórios: OS, equipe, responsável, data, local, demanda
+        const campos = [
+            ['numOS', 'Informe o número da OS.'], ['selectEquipe', 'Selecione a equipe.'], ['selectResponsavel', 'Selecione o responsável.'],
+            ['dataAtual', 'Informe a data.'], ['localRef', 'Informe o local ou uma referência.'], ['selectDemanda', 'Selecione o tipo de demanda.']
+        ];
+        let primeiro = null;
+        campos.forEach(([id, msg]) => { const c = $(id); limparErro(c); if (!String(c.value).trim()) { marcarErro(c, msg); primeiro = primeiro || c; } });
+        if (primeiro) { irPara(primeiro); return toast('Preencha os campos obrigatórios marcados em vermelho.', true); }
 
         const numOS = $('numOS').value.trim();
         const equipe = $('selectEquipe').value;
@@ -590,65 +1165,61 @@
         const local = $('localRef').value.trim();
         const demanda = $('selectDemanda').value;
 
-        const inputOS = $('numOS');
-        inputOS.classList.remove('input-error');
-        if (!numOS) { inputOS.classList.add('input-error'); inputOS.focus(); return alert('Preencha o número da Ordem de Serviço (OS).'); }
-        if (!equipe || !responsavel || !data || !local || !demanda) return alert('Preencha todos os campos obrigatórios da seção 1 e 2.');
-
         // data: não aceita futuro; avisa se muito antiga
         const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
         const p = data.split('-');
         const dt = new Date(+p[0], +p[1] - 1, +p[2]);
-        if (dt > hoje) return alert('A data não pode ser no futuro.');
-        const dias = Math.round((hoje - dt) / 86400000);
-        if (dias > DIAS_RETROATIVO_AVISO && !confirm('A data informada é de ' + dias + ' dias atrás. Está correta?')) return;
+        if (dt > hoje) { marcarErro($('dataAtual'), 'A data não pode ser no futuro.'); irPara($('dataAtual')); return; }
 
-        // serviços
-        const cards = document.querySelectorAll('#services .card');
-        if (cards.length === 0) return alert('Adicione pelo menos um serviço.');
-        const servicos = [], nomesUsados = [];
-        let invalido = false;
-        cards.forEach(card => {
-            const nome = card.dataset.servico;
-            const qtd = card.querySelector('input[type="number"]');
-            const pk = card.querySelector('.pick');
-            pk.classList.remove('input-error'); qtd.classList.remove('input-error');
-            if (!nome) { invalido = true; pk.classList.add('input-error'); return; }
-            const v = parseFloat(qtd.value);
-            if (!(v > 0)) { invalido = true; qtd.classList.add('input-error'); return; }
-            servicos.push(nome + ' (' + fmtQtd(v) + ' ' + ((servMap[nome] && servMap[nome].u) || 'unidade') + ')');
-            nomesUsados.push(nome);
-        });
-        if (invalido) return alert('Em cada serviço, escolha o serviço e informe a quantidade.');
+        // 2) serviços da OS
+        const servicosOS = lerServicos($('services'));
+        if (servicosOS === null) { irPara(document.querySelector('#services .input-error')); return toast('Em cada serviço, escolha o serviço e informe a quantidade.', true); }
 
-        // ocorrências
-        const ocorrencias = [];
+        // 3) ocorrências
         const houveImprevisto = document.querySelector('input[name="i"]:checked').value === 's';
+        let ocorrencias = [];
         if (houveImprevisto) {
-            const cardsOcc = document.querySelectorAll('#occurrences .card');
-            if (cardsOcc.length === 0) return alert('Você marcou que houve imprevisto. Adicione pelo menos uma ocorrência ou altere para "Não".');
-            let semTipo = false, semDesc = false;
-            cardsOcc.forEach(card => {
-                const s = card.querySelector('select'), t = card.querySelector('textarea');
-                s.classList.remove('input-error'); t.classList.remove('input-error');
-                const tipo = s.value, desc = t.value.trim();
-                if (!tipo) { semTipo = true; s.classList.add('input-error'); }
-                if (!desc) { semDesc = true; t.classList.add('input-error'); }
-                ocorrencias.push(tipo + ': ' + desc.replace(/\|/g, '/').replace(/\s+/g, ' '));
-            });
-            if (semTipo) return alert('Selecione o tipo para todas as ocorrências adicionadas.');
-            if (semDesc) return alert('Por favor, detalhe a descrição do imprevisto na ocorrência selecionada.');
+            const r = lerOcorrencias();
+            if (!r.lista.length) return toast('Você marcou que houve imprevisto. Adicione uma ocorrência ou marque "Não".', true);
+            if (r.erro) { irPara(document.querySelector('#occurrences .input-error')); return toast(r.erro, true); }
+            ocorrencias = r.lista;
         }
 
-        // transporte
+        const servicosOc = ocorrencias.map(o => o.servicos);
+        const totalServ = somarServicos([servicosOS].concat(servicosOc));
+        if (!totalServ.length && !ocorrencias.length) { irPara($('services')); return toast('Adicione pelo menos um serviço.', true); }
+
+        // 4) transporte
         let transporte = 'Não';
         if (document.querySelector('input[name="tr"]:checked').value === 's') {
             const tipo = $('selectTipoTransporte').value;
             const v = parseInt($('qtdViagens').value, 10);
-            if (!tipo) return alert('Selecione o tipo de transporte.');
-            if (!(v >= 1)) return alert('Informe a quantidade de viagens (mínimo 1).');
+            if (!tipo) return toast('Selecione o tipo de transporte.', true);
+            if (!(v >= 1)) { $('qtdViagens').classList.add('input-error'); irPara($('qtdViagens')); return toast('Informe a quantidade de viagens (mínimo 1).', true); }
             transporte = tipo + ' (' + v + (v === 1 ? ' viagem)' : ' viagens)');
         }
+
+        // 5) avisos (data antiga, OS repetida neste aparelho)
+        const dias = Math.round((hoje - dt) / 86400000);
+        if (dias > DIAS_RETROATIVO_AVISO && !confirm('A data informada é de ' + dias + ' dias atrás. Está correta?')) return;
+        const limOS = Date.now() - DIAS_OS_REPETIDA * 86400000;
+        const rep = histLer().filter(h => h.criadoEm > limOS && norm(h.os) === norm(numOS)).sort((a, b) => b.criadoEm - a.criadoEm)[0];
+        if (rep && !confirm('A OS "' + numOS + '" já foi lançada neste aparelho em ' + new Date(rep.criadoEm).toLocaleDateString('pt-BR') + ' às ' + hhmm(rep.criadoEm) + '.\n\nDeseja lançar de novo mesmo assim?')) return;
+
+        // 6) resumo
+        const obs = $('obsGerais').value;
+        const confirmado = await mostrarResumo({ numOS, equipe, responsavel, data, local, demanda, servicosOS, ocorrencias, transporte, obs });
+        if (!confirmado) return;
+
+        // texto das ocorrências (compatível com a coluna atual da planilha)
+        const ocTexto = ocorrencias.map(o => {
+            let t = o.tipo + ' [' + o.quando + ' · ' + o.situacao + ']';
+            if (o.local) t += ' @ ' + limpaTxt(o.local);
+            t += ': ' + limpaTxt(o.desc);
+            if (o.servicos.length) t += ' → Serviços: ' + o.servicos.map(txtServ).join('; ');
+            return t;
+        });
+        const pendentes = ocorrencias.filter(o => o.situacao !== 'Resolvido').length;
 
         const item = {
             id: novoId(),
@@ -656,32 +1227,45 @@
             payload: {
                 id: null,
                 ordemServico: numOS, equipe: equipe, responsavel: responsavel, data: data, local: local, demanda: demanda,
-                servicos: servicos.join(' | '),
-                ocorrencias: houveImprevisto ? ocorrencias.join(' | ') : 'Nenhuma',
+                // total de serviços (OS + ocorrências) no mesmo formato de antes
+                servicos: totalServ.map(txtServ).join(' | '),
+                ocorrencias: houveImprevisto ? ocTexto.join(' | ') : 'Nenhuma',
                 transporte: transporte,
-                observacoes: $('obsGerais').value,
-                versaoApp: APP_VERSAO
+                observacoes: obs,
+                versaoApp: APP_VERSAO,
+                // campos novos (o Apps Script pode usar ou ignorar)
+                servicosOS: servicosOS.map(txtServ).join(' | '),
+                servicosOcorrencias: servicosOc.flat().map(txtServ).join(' | '),
+                ocorrenciasPendentes: pendentes,
+                ocorrenciasDetalhe: JSON.stringify(ocorrencias.map(o => ({ tipo: o.tipo, quando: o.quando, situacao: o.situacao, local: o.local, descricao: o.desc, servicos: o.servicos })))
             }
         };
         item.payload.id = item.id;
 
-        // 1) guarda no aparelho ANTES de enviar (se algo falhar, nada se perde)
+        // guarda no aparelho ANTES de enviar (se algo falhar, nada se perde)
         btn.disabled = true; btn.textContent = 'Enviando...';
         filaAdicionar(item);
+        histAdicionar({ id: item.id, os: numOS, data: data, demanda: demanda, criadoEm: item.criadoEm, nServ: totalServ.length, nOc: ocorrencias.length });
         lsSet(LS.ultimo, { equipe: equipe, responsavel: responsavel });
-        const uso = lsGet(LS.uso, {}); nomesUsados.forEach(n => uso[n] = (uso[n] || 0) + 1); lsSet(LS.uso, uso);
+        const uso = lsGet(LS.uso, {}); totalServ.forEach(s => uso[s.n] = (uso[s.n] || 0) + 1); lsSet(LS.uso, uso);
+        const usoOc = lsGet(LS.usoOc, {}); ocorrencias.forEach(o => usoOc[o.tipo] = (usoOc[o.tipo] || 0) + 1); lsSet(LS.usoOc, usoOc);
+        clearTimeout(rascT); lsDel(LS.rasc);
 
-        // 2) envia e lê a resposta real do servidor
+        // envia e lê a resposta real do servidor
         showLoading(true, 'Enviando registro...');
         const res = await enviarItem(item);
         showLoading(false);
 
         if (res.tipo === 'invalido') {
-            btn.disabled = false; btn.textContent = 'Enviar registro';
+            btn.disabled = false; btn.textContent = 'Revisar e enviar';
+            lsSet(LS.rasc, estadoForm());
+            lsSet(LS.hist, histLer().filter(h => h.id !== item.id)); atualizarContHist();
             return alert((res.j && res.j.message) || 'O servidor recusou o registro. Confira os dados.');
         }
 
         $('form').style.display = 'none';
+        $('footer').style.display = 'none';
+        $('rascBanner').style.display = 'none';
         $('ok').style.display = 'block';
         window.scrollTo(0, 0);
         if (res.tipo === 'ok') {
@@ -700,13 +1284,18 @@
     //  INÍCIO
     // ============================================================
     (function iniciar() {
-        try {
-            const h = new Date();
-            $('dataAtual').value = h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0') + '-' + String(h.getDate()).padStart(2, '0');
-        } catch (e) {}
-        addServico();
+        try { $('dataAtual').value = hojeISO(); } catch (e) {}
+        infoConfig('');
+        restaurarRascunho();
+        atualizarVazio();
         atualizarBannerFila();
+        atualizarContHist();
         carregarConfig().then(() => processarFila(false));
+
+        // app instalável / abre sem internet
+        if ('serviceWorker' in navigator && location.protocol === 'https:') {
+            window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW:', e)));
+        }
     })();
 </script>
 </body>
