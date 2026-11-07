@@ -413,7 +413,7 @@
     const GOOGLE_SCRIPT_URL = EMP.appsScriptUrl;
 
     const APP_NOME = "InfraControl";
-    const APP_VERSAO = "2.4";
+    const APP_VERSAO = "2.5";
     const P = EMP.prefixo || 'ic';
     const LS = { config: P + '_config_v2', pin: P + '_pin', fila: P + '_fila_v2', uso: P + '_uso_v2', ultimo: P + '_ultimo_v2', rasc: P + '_rascunho_v1', hist: P + '_hist_v1', usoOc: P + '_uso_oc_v1', anot: P + '_anot_v1' };
 
@@ -1044,8 +1044,11 @@
         let melhor = null, id = null, fim = null;
         const aplicar = (pp, final) => {
             alvo.lat = +pp.coords.latitude.toFixed(6); alvo.lng = +pp.coords.longitude.toFixed(6); alvo.acc = pp.coords.accuracy;
-            box.className = final ? 'gps ok' : 'gps busy';
-            txt.textContent = (final ? 'Local marcado' : 'Refinando o local…') + ' · precisão de ± ' + Math.round(pp.coords.accuracy) + ' m · ' + hhmm(t0);
+            const ruim = final && pp.coords.accuracy > 300;
+            box.className = ruim ? 'gps err' : (final ? 'gps ok' : 'gps busy');
+            txt.textContent = ruim
+                ? 'Local aproximado (± ' + Math.round(pp.coords.accuracy) + ' m). O GPS não respondeu: ligue a Localização do celular e, nas permissões do app/navegador, ative “Local exato”. Ou descreva a referência.'
+                : (final ? 'Local marcado' : 'Refinando o local…') + ' · precisão de ± ' + Math.round(pp.coords.accuracy) + ' m · ' + hhmm(t0);
         };
         const parar = () => { if (id !== null) navigator.geolocation.clearWatch(id); id = null; clearTimeout(fim); };
         // só leituras novas (nada guardado de antes do toque); fica com a mais precisa até chegar a ~25 m ou 10 s
@@ -1058,12 +1061,12 @@
             if (anotAtual !== alvo || melhor) return;
             parar(); box.className = 'gps err';
             txt.textContent = err.code === 1 ? 'Localização bloqueada. Libere nas permissões do navegador ou use a referência.' : 'Não deu para marcar o local agora. Salve com a referência.';
-        }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+        }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
         fim = setTimeout(() => {
             parar(); if (anotAtual !== alvo) return;
             if (melhor) aplicar(melhor, true);
             else { box.className = 'gps err'; txt.textContent = 'Não deu para marcar o local agora. Salve com a referência.'; }
-        }, 10000);
+        }, 15000);
     }
     function salvarAnotacao() {
         if (!anotAtual) return;
