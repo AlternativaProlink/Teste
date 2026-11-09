@@ -199,6 +199,15 @@
         .hitem { border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
         .hitem .l1 { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; font-size: 14px; }
         .hitem .l2 { font-size: 12px; color: var(--muted); margin-top: 3px; }
+        .hitem .l3 { font-size: 12px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--borda); }
+        .hitem .l3 b { color: var(--verde); }
+        .hitem .aval { margin-top: 4px; padding: 6px 8px; border-radius: 8px; background: var(--verde-claro); font-size: 12px; }
+        .pill.fin { background: #e0f2fe; color: #0369a1; }
+        .pill.rec { background: #fee2e2; color: #b91c1c; }
+        .finbox { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; padding: 12px; border: 1.5px solid var(--borda); border-radius: 10px; cursor: pointer; }
+        .finbox input { width: 22px; height: 22px; margin: 1px 0 0; accent-color: var(--verde); flex: none; }
+        .finbox b { display: block; font-size: 14px; }
+        .finbox small { color: var(--muted); font-size: 12px; }
 
         /* PIN */
         .pinbox { background: #fff; width: calc(100% - 40px); max-width: 360px; border-radius: 14px; padding: 20px; margin: auto; }
@@ -306,7 +315,11 @@
 
         <div class="sec">
             <div class="t"><span class="n">6</span>Observações</div>
-            <textarea id="obsGerais" placeholder="Informações adicionais, se necessário." style="margin-top:8px"></textarea>
+            <textarea id="obsGerais" placeholder="Fez algum serviço que não está na lista? Descreva aqui o que foi feito e a quantidade. A equipe interna avalia e pontua." style="margin-top:8px"></textarea>
+            <label class="finbox" for="osFinalizada">
+                <input type="checkbox" id="osFinalizada">
+                <span><b>OS finalizada</b><small>Marque só quando o serviço desta OS estiver concluído. Depois de finalizada, a OS não aceita novos lançamentos. Se a equipe vai voltar outro dia, deixe desmarcado.</small></span>
+            </label>
         </div>
     </main>
 
@@ -413,7 +426,7 @@
     const GOOGLE_SCRIPT_URL = EMP.appsScriptUrl;
 
     const APP_NOME = "InfraControl";
-    const APP_VERSAO = "2.5";
+    const APP_VERSAO = "2.6";
     const P = EMP.prefixo || 'ic';
     const LS = { config: P + '_config_v2', pin: P + '_pin', fila: P + '_fila_v2', uso: P + '_uso_v2', ultimo: P + '_ultimo_v2', rasc: P + '_rascunho_v1', hist: P + '_hist_v1', usoOc: P + '_uso_oc_v1', anot: P + '_anot_v1' };
 
@@ -493,6 +506,7 @@
         cfg.servicos = (j.servicos || []).map(s => ({ n: s.n, c: s.c || 'Outros', u: s.u || 'unidade', _k: norm(s.n + ' ' + (s.c || '')) }));
         cfg.ocorrencias = j.ocorrencias || [];
         cfg.transportes = j.transportes || [];
+        cfg.finalizadas = new Set((j.osFinalizadas || []).map(norm));
         const a = j.app || {};
         opcoesApp = { anotar: a.anotarNoCaminho !== false, transporte: a.mostrarTransporte !== false,
                       retro: Number(a.diasRetroativo) || 7, osRep: Number(a.diasOSRepetida) || 30 };
@@ -966,7 +980,7 @@
             }),
             tr: document.querySelector('input[name="tr"]:checked').value,
             trTipo: $('selectTipoTransporte').value, trQtd: $('qtdViagens').value,
-            obs: $('obsGerais').value,
+            obs: $('obsGerais').value, fin: $('osFinalizada').checked,
             salvoEm: Date.now()
         };
     }
@@ -993,7 +1007,7 @@
             $('numOS').value = s.numOS || '';
             if (s.data) $('dataAtual').value = s.data;
             $('localRef').value = s.local || '';
-            $('obsGerais').value = s.obs || '';
+            $('obsGerais').value = s.obs || ''; $('osFinalizada').checked = !!s.fin;
             pend = { equipe: s.equipe, responsavel: s.responsavel, demanda: s.demanda, trTipo: s.trTipo };
             (s.servicos || []).forEach(x => criarServico($('services'), x.n, x.q));
             if (s.imprevisto === 's' && (s.ocorrencias || []).length) {
@@ -1119,7 +1133,20 @@
         $('histCount').textContent = n ? String(n) : '';
         $('histCount').parentElement.title = n ? n + (n === 1 ? ' registro hoje' : ' registros hoje') : 'Meus registros';
     }
-    function abrirHistorico() {
+    function histMarcar(id, campos) { lsSet(LS.hist, lsGet(LS.hist, []).map(h => h.id === id ? Object.assign(h, campos) : h)); }
+    let histServidor = {};
+    async function buscarStatusHistorico(ids) {
+        if (!ids.length || !navigator.onLine) return false;
+        try {
+            const url = GOOGLE_SCRIPT_URL + '?acao=status&pin=' + encodeURIComponent(getPin()) + '&ids=' + encodeURIComponent(ids.join(','));
+            const r = await fetchTimeout(url, {}, 15000);
+            const j = await r.json();
+            if (!j || !j.ok) return false;
+            (j.registros || []).forEach(x => { histServidor[x.id] = x; });
+            return true;
+        } catch (e) { return false; }
+    }
+    function abrirHistorico(semBuscar) {
         const box = $('histBody'); box.innerHTML = '';
         const naFila = new Set(filaLer().map(i => i.id));
         const lim = Date.now() - DIAS_HISTORICO * 86400000;
@@ -1130,13 +1157,27 @@
         lista.forEach(h => {
             const g = new Date(h.criadoEm).toDateString() === hojeStr ? 'Hoje' : 'Dias anteriores';
             if (g !== grupo) { grupo = g; box.appendChild(el('div', 'ghead', g)); }
+            const sv = histServidor[h.id];
             const it = el('div', 'hitem');
             const l1 = el('div', 'l1');
             l1.appendChild(el('span', null, h.os));
-            const st = el('span', 'pill' + (naFila.has(h.id) ? ' fila' : ''), naFila.has(h.id) ? '⏳ Aguardando envio' : '✓ Enviado');
-            l1.appendChild(st);
+            const pills = el('span');
+            if (h.status === 'recusado') pills.appendChild(el('span', 'pill rec', 'Recusado'));
+            else if (naFila.has(h.id)) pills.appendChild(el('span', 'pill fila', '⏳ Aguardando envio'));
+            else pills.appendChild(el('span', 'pill', '✓ Enviado'));
+            if ((sv && sv.finalizada) || h.fin) pills.appendChild(el('span', 'pill fin', 'Finalizada'));
+            l1.appendChild(pills);
             it.appendChild(l1);
             it.appendChild(el('div', 'l2', fmtData(h.data) + ' · ' + h.demanda + ' · ' + h.nServ + (h.nServ === 1 ? ' serviço' : ' serviços') + (h.nOc ? ' · ' + h.nOc + (h.nOc === 1 ? ' ocorrência' : ' ocorrências') : '') + ' · lançado às ' + hhmm(h.criadoEm)));
+            if (h.status === 'recusado') it.appendChild(el('div', 'aval', h.motivo || 'Recusado pela planilha.'));
+            if (sv) {
+                const l3 = el('div', 'l3');
+                l3.appendChild(document.createTextNode('Pontos: '));
+                l3.appendChild(el('b', null, String(sv.total)));
+                if (sv.extra) l3.appendChild(document.createTextNode('  (' + sv.calculado + ' do app + ' + sv.extra + ' da avaliação)'));
+                it.appendChild(l3);
+                if (sv.extra || sv.avaliacao) it.appendChild(el('div', 'aval', 'Avaliação da equipe interna: ' + (sv.extra ? '+' + sv.extra + ' pts' : '') + (sv.avaliacao ? (sv.extra ? ' · ' : '') + sv.avaliacao : '')));
+            }
             box.appendChild(it);
         });
         if (naFila.size) {
@@ -1144,9 +1185,13 @@
             b.onclick = async () => { await processarFila(true); abrirHistorico(); };
             box.appendChild(b);
         }
-        box.appendChild(el('div', 'note', 'Mostra só o que foi lançado neste aparelho.'));
+        box.appendChild(el('div', 'note', 'Mostra o que foi lançado neste aparelho. Os pontos e as avaliações da equipe interna são atualizados ao abrir esta tela (precisa de internet).'));
         $('historico').classList.remove('hidden');
         document.body.classList.add('noscroll');
+        if (!semBuscar) {
+            const ids = lista.filter(h => !naFila.has(h.id) && h.status !== 'recusado').map(h => h.id).slice(0, 60);
+            buscarStatusHistorico(ids).then(ok => { if (ok && !$('historico').classList.contains('hidden')) abrirHistorico(true); });
+        }
     }
     function fecharHistorico() { $('historico').classList.add('hidden'); document.body.classList.remove('noscroll'); }
 
@@ -1195,7 +1240,7 @@
             item.payload.pin = getPin();
             const res = await postar(item.payload);
             if (res.tipo === 'ok') filaRemover(item.id);
-            else if (res.tipo === 'invalido') filaRemover(item.id);
+            else if (res.tipo === 'invalido') { filaRemover(item.id); histMarcar(item.id, { status: 'recusado', motivo: (res.j && res.j.message) || 'Recusado pela planilha.' }); }
             else if (res.tipo === 'pin') pedirPin(getPin() ? 'PIN incorreto.' : '');
             return res;
         } finally { emEnvio.delete(item.id); }
@@ -1243,7 +1288,7 @@
 
         const s1 = sec('Identificação');
         const dl = el('dl', 'rs-kv');
-        [['OS', r.numOS], ['Equipe', r.equipe], ['Responsável', r.responsavel], ['Data', fmtData(r.data)], ['Local', r.local], ['Demanda', r.demanda]]
+        [['OS', r.numOS], ['Equipe', r.equipe], ['Responsável', r.responsavel], ['Data', fmtData(r.data)], ['Local', r.local], ['Demanda', r.demanda], ['Situação da OS', r.finalizada ? 'Finalizada' : 'Em andamento (volta outro dia)']]
             .forEach(([k, v]) => { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v)); });
         s1.appendChild(dl);
 
@@ -1350,13 +1395,18 @@
         // 5) avisos (data antiga, OS repetida neste aparelho)
         const dias = Math.round((hoje - dt) / 86400000);
         if (dias > opcoesApp.retro && !confirm('A data informada é de ' + dias + ' dias atrás. Está correta?')) return;
-        const limOS = Date.now() - opcoesApp.osRep * 86400000;
-        const rep = histLer().filter(h => h.criadoEm > limOS && norm(h.os) === norm(numOS)).sort((a, b) => b.criadoEm - a.criadoEm)[0];
-        if (rep && !confirm('A OS "' + numOS + '" já foi lançada neste aparelho em ' + new Date(rep.criadoEm).toLocaleDateString('pt-BR') + ' às ' + hhmm(rep.criadoEm) + '.\n\nDeseja lançar de novo mesmo assim?')) return;
+        const finalizada = $('osFinalizada').checked;
+        const doAparelho = histLer().filter(h => norm(h.os) === norm(numOS) && h.status !== 'recusado').sort((a, b) => b.criadoEm - a.criadoEm);
+        if ((cfg.finalizadas && cfg.finalizadas.has(norm(numOS))) || doAparelho.some(h => h.fin)) {
+            marcarErro($('numOS'), 'Esta OS já foi finalizada.'); irPara($('numOS'));
+            return alert('A OS "' + numOS + '" já foi finalizada e não aceita novos lançamentos.\n\nSe precisar corrigir algo, fale com a equipe interna.');
+        }
+        const rep = doAparelho.find(h => h.data === data);
+        if (rep && !confirm('A OS "' + numOS + '" já foi lançada neste aparelho hoje (' + fmtData(data) + ') às ' + hhmm(rep.criadoEm) + '.\n\nDeseja lançar de novo mesmo assim?')) return;
 
         // 6) resumo
         const obs = $('obsGerais').value;
-        const confirmado = await mostrarResumo({ numOS, equipe, responsavel, data, local, demanda, servicosOS, ocorrencias, transporte, obs });
+        const confirmado = await mostrarResumo({ numOS, equipe, responsavel, data, local, demanda, servicosOS, ocorrencias, transporte, obs, finalizada });
         if (!confirmado) return;
 
         // texto das ocorrências (compatível com a coluna atual da planilha)
@@ -1380,6 +1430,7 @@
                 ocorrencias: houveImprevisto ? ocTexto.join(' | ') : 'Nenhuma',
                 transporte: transporte,
                 observacoes: obs,
+                finalizada: finalizada,
                 versaoApp: APP_VERSAO,
                 // campos novos (o Apps Script pode usar ou ignorar)
                 servicosOS: servicosOS.map(txtServ).join(' | '),
@@ -1393,7 +1444,8 @@
         // guarda no aparelho ANTES de enviar (se algo falhar, nada se perde)
         btn.disabled = true; btn.textContent = 'Enviando...';
         filaAdicionar(item);
-        histAdicionar({ id: item.id, os: numOS, data: data, demanda: demanda, criadoEm: item.criadoEm, nServ: totalServ.length, nOc: ocorrencias.length });
+        histAdicionar({ id: item.id, os: numOS, data: data, demanda: demanda, criadoEm: item.criadoEm, nServ: totalServ.length, nOc: ocorrencias.length, fin: finalizada });
+        if (finalizada && cfg.finalizadas) cfg.finalizadas.add(norm(numOS));
         lsSet(LS.ultimo, { equipe: equipe, responsavel: responsavel });
         const uso = lsGet(LS.uso, {}); totalServ.forEach(s => uso[s.n] = (uso[s.n] || 0) + 1); lsSet(LS.uso, uso);
         const usoOc = lsGet(LS.usoOc, {}); ocorrencias.forEach(o => usoOc[o.tipo] = (usoOc[o.tipo] || 0) + 1); lsSet(LS.usoOc, usoOc);
