@@ -260,6 +260,10 @@
                 <option value="">Selecione primeiro a equipe</option>
             </select>
 
+            <label for="selectJunto">Trabalhou junto com outra equipe? <span style="font-weight:400;color:var(--muted)">(opcional)</span></label>
+            <select id="selectJunto"><option value="">Não</option></select>
+            <p class="note" style="margin:4px 0 0">Se escolher uma equipe, este registro também vai para ela, com os mesmos pontos. Só uma das equipes precisa lançar.</p>
+
             <label for="dataAtual" class="req">Data</label>
             <input type="date" id="dataAtual">
 
@@ -426,17 +430,21 @@
     const GOOGLE_SCRIPT_URL = EMP.appsScriptUrl;
 
     const APP_NOME = "InfraControl";
-    const APP_VERSAO = "2.6";
+    const APP_VERSAO = "2.7";
     const P = EMP.prefixo || 'ic';
     const LS = { config: P + '_config_v2', pin: P + '_pin', fila: P + '_fila_v2', uso: P + '_uso_v2', ultimo: P + '_ultimo_v2', rasc: P + '_rascunho_v1', hist: P + '_hist_v1', usoOc: P + '_uso_oc_v1', anot: P + '_anot_v1' };
 
     // aplica a identidade da empresa na tela
+    function aplicarCor(c) {
+        document.documentElement.style.setProperty('--verde', c);
+        const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', c);
+    }
     (function aplicarEmpresa() {
         const d = document;
-        if (/^#[0-9a-f]{3,8}$/i.test(EMP.cor)) {
-            d.documentElement.style.setProperty('--verde', EMP.cor);
-            d.querySelector('meta[name="theme-color"]').setAttribute('content', EMP.cor);
-        }
+        let corSalva = ''; try { corSalva = localStorage.getItem(P + '_cor') || ''; } catch (e) {}
+        // a cor da planilha (aba Configurações) tem prioridade sobre a do empresa.js
+        if (/^#[0-9a-f]{6}$/i.test(corSalva)) aplicarCor(corSalva);
+        else if (/^#[0-9a-f]{3,8}$/i.test(EMP.cor)) aplicarCor(EMP.cor);
         const img = d.getElementById('logoEmpresa');
         img.onerror = () => { d.querySelector('.logo-container').style.display = 'none'; };
         if (EMP.logo) { img.src = EMP.logo; img.alt = EMP.nome; } else d.querySelector('.logo-container').style.display = 'none';
@@ -507,6 +515,8 @@
         cfg.ocorrencias = j.ocorrencias || [];
         cfg.transportes = j.transportes || [];
         cfg.finalizadas = new Set((j.osFinalizadas || []).map(norm));
+        const corPlan = j.empresa && j.empresa.cor;
+        if (corPlan && /^#[0-9a-f]{6}$/i.test(corPlan)) { aplicarCor(corPlan); try { localStorage.setItem(P + '_cor', corPlan); } catch (e) {} }
         const a = j.app || {};
         opcoesApp = { anotar: a.anotarNoCaminho !== false, transporte: a.mostrarTransporte !== false,
                       retro: Number(a.diasRetroativo) || 7, osRep: Number(a.diasOSRepetida) || 30 };
@@ -597,6 +607,16 @@
             sel.appendChild(new Option('(Nenhum membro cadastrado nesta equipe)', ''));
         }
         limparErro(sel);
+        renderizarJunto();
+    }
+    function renderizarJunto() {
+        const sel = $('selectJunto'), eq = $('selectEquipe').value;
+        const antes = sel.value || pend.junto || '';
+        if (pend.junto && eq) delete pend.junto;
+        sel.innerHTML = '';
+        sel.appendChild(new Option('Não', ''));
+        (cfg.ordemEquipes || []).forEach(e => { if (cfg.equipes[e] && e !== eq) sel.appendChild(new Option(e, e)); });
+        if (antes && antes !== eq && cfg.equipes[antes]) sel.value = antes;
     }
 
     function renderizarDemandas() {
@@ -968,7 +988,7 @@
     function estadoForm() {
         const servs = lista => [...lista.querySelectorAll(':scope > .svc')].map(c => ({ n: c.dataset.servico || '', q: c.querySelector('input[type="number"]').value }));
         return {
-            numOS: $('numOS').value, equipe: $('selectEquipe').value, responsavel: $('selectResponsavel').value,
+            numOS: $('numOS').value, equipe: $('selectEquipe').value, responsavel: $('selectResponsavel').value, junto: $('selectJunto').value,
             data: $('dataAtual').value, local: $('localRef').value, demanda: $('selectDemanda').value,
             servicos: servs($('services')),
             imprevisto: document.querySelector('input[name="i"]:checked').value,
@@ -1008,7 +1028,7 @@
             if (s.data) $('dataAtual').value = s.data;
             $('localRef').value = s.local || '';
             $('obsGerais').value = s.obs || ''; $('osFinalizada').checked = !!s.fin;
-            pend = { equipe: s.equipe, responsavel: s.responsavel, demanda: s.demanda, trTipo: s.trTipo };
+            pend = { equipe: s.equipe, responsavel: s.responsavel, demanda: s.demanda, trTipo: s.trTipo, junto: s.junto || '' };
             (s.servicos || []).forEach(x => criarServico($('services'), x.n, x.q));
             if (s.imprevisto === 's' && (s.ocorrencias || []).length) {
                 document.querySelector('input[name="i"][value="s"]').checked = true;
@@ -1288,7 +1308,7 @@
 
         const s1 = sec('Identificação');
         const dl = el('dl', 'rs-kv');
-        [['OS', r.numOS], ['Equipe', r.equipe], ['Responsável', r.responsavel], ['Data', fmtData(r.data)], ['Local', r.local], ['Demanda', r.demanda], ['Situação da OS', r.finalizada ? 'Finalizada' : 'Em andamento (volta outro dia)']]
+        [['OS', r.numOS], ['Equipe', r.equipe], ['Responsável', r.responsavel], ['Data', fmtData(r.data)], ['Local', r.local], ['Demanda', r.demanda], ['Trabalhou junto com', r.equipeJunto || 'Não'], ['Situação da OS', r.finalizada ? 'Finalizada' : 'Em andamento (volta outro dia)']]
             .forEach(([k, v]) => { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v)); });
         s1.appendChild(dl);
 
@@ -1406,7 +1426,8 @@
 
         // 6) resumo
         const obs = $('obsGerais').value;
-        const confirmado = await mostrarResumo({ numOS, equipe, responsavel, data, local, demanda, servicosOS, ocorrencias, transporte, obs, finalizada });
+        const equipeJunto = $('selectJunto').value;
+        const confirmado = await mostrarResumo({ numOS, equipe, responsavel, data, local, demanda, servicosOS, ocorrencias, transporte, obs, finalizada, equipeJunto });
         if (!confirmado) return;
 
         // texto das ocorrências (compatível com a coluna atual da planilha)
@@ -1424,7 +1445,7 @@
             criadoEm: Date.now(),
             payload: {
                 id: null,
-                ordemServico: numOS, equipe: equipe, responsavel: responsavel, data: data, local: local, demanda: demanda,
+                ordemServico: numOS, equipe: equipe, responsavel: responsavel, data: data, local: local, demanda: demanda, equipeJunto: equipeJunto,
                 // total de serviços (OS + ocorrências) no mesmo formato de antes
                 servicos: totalServ.map(txtServ).join(' | '),
                 ocorrencias: houveImprevisto ? ocTexto.join(' | ') : 'Nenhuma',
