@@ -196,7 +196,12 @@
         .pill.Parcial { background: #fef3c7; color: #b45309; }
 
         /* histórico */
-        .hitem { border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+        .mp { border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; background: var(--verde-claro); }
+        .mp .big { font-size: 22px; font-weight: 800; color: var(--verde); }
+        .mp select { margin-top: 6px; padding: 6px 8px; font-size: 13px; }
+        .hitem .ajc { margin-top: 4px; padding: 6px 8px; border-radius: 8px; background: #fff4ec; color: #8a3a0a; font-size: 12px; }
+        .pill.anu { background: #ffedd5; color: #c2410c; }
+        .hitem { 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
         .hitem .l1 { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; font-size: 14px; }
         .hitem .l2 { font-size: 12px; color: var(--muted); margin-top: 3px; }
         .hitem .l3 { font-size: 12px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--borda); }
@@ -318,7 +323,7 @@
         </div>
 
         <div class="sec">
-            <div class="t"><span class="n">6</span>Observações</div>
+            <div class="t" id="tObs"><span class="n">6</span>Observações</div>
             <textarea id="obsGerais" placeholder="Fez algum serviço que não está na lista? Descreva aqui o que foi feito e a quantidade. A equipe interna avalia e pontua." style="margin-top:8px"></textarea>
             <label class="finbox" for="osFinalizada">
                 <input type="checkbox" id="osFinalizada">
@@ -430,7 +435,7 @@
     const GOOGLE_SCRIPT_URL = EMP.appsScriptUrl;
 
     const APP_NOME = "InfraControl";
-    const APP_VERSAO = "2.7";
+    const APP_VERSAO = "2.8";
     const P = EMP.prefixo || 'ic';
     const LS = { config: P + '_config_v2', pin: P + '_pin', fila: P + '_fila_v2', uso: P + '_uso_v2', ultimo: P + '_ultimo_v2', rasc: P + '_rascunho_v1', hist: P + '_hist_v1', usoOc: P + '_uso_oc_v1', anot: P + '_anot_v1' };
 
@@ -459,6 +464,20 @@
     const TIMEOUT_CONFIG_MS = 15000;
     // opções que vêm da aba Configurações da planilha (com valores padrão)
     let opcoesApp = { anotar: true, transporte: true, retro: 7, osRep: 30 };
+    let obrig = { local: true, demanda: true, obs: false, ocQuando: true, ocLocal: false, ocDesc: true };
+    // campos obrigatórios definidos na aba Configurações da planilha
+    function aplicarObrigatorios() {
+        document.querySelector('label[for="localRef"]').classList.toggle('req', obrig.local);
+        document.querySelector('label[for="selectDemanda"]').classList.toggle('req', obrig.demanda);
+        $('tObs').classList.toggle('req', obrig.obs);
+        document.querySelectorAll('#occurrences .oc').forEach(marcarObrigOc);
+    }
+    function marcarObrigOc(card) {
+        const q = card.querySelector('.lbl-quando'), l = card.querySelector('.lbl-local'), dsc = card.querySelector('.lbl-desc');
+        if (q) q.classList.toggle('req', obrig.ocQuando);
+        if (l) { l.classList.toggle('req', obrig.ocLocal); const op = l.querySelector('.opt'); if (op) op.textContent = obrig.ocLocal ? '(rua, nº do poste, identificação da CTO/CEO)' : '(opcional · rua, nº do poste, CTO/CEO)'; }
+        if (dsc) dsc.classList.toggle('req', obrig.ocDesc);
+    }
     const DIAS_HISTORICO = 7;
 
     // ============================================================
@@ -521,6 +540,9 @@
         opcoesApp = { anotar: a.anotarNoCaminho !== false, transporte: a.mostrarTransporte !== false,
                       retro: Number(a.diasRetroativo) || 7, osRep: Number(a.diasOSRepetida) || 30 };
         $('btnAnotar').classList.toggle('hidden', !opcoesApp.anotar);
+        const ob = a.obrigatorios || {};
+        obrig = { local: ob.local !== false, demanda: ob.demanda !== false, obs: ob.obs === true, ocQuando: ob.ocQuando !== false, ocLocal: ob.ocLocal === true, ocDesc: ob.ocDesc !== false };
+        aplicarObrigatorios();
         cfg.carregada = true;
         servMap = {}; cfg.servicos.forEach(s => servMap[s.n] = s);
 
@@ -859,7 +881,7 @@
         pick.onclick = () => abrirPicker({ modo: 'oc', onEscolher: n => { d.dataset.tipo = n; marcarTipoOc(d, n); pick.classList.remove('input-error'); salvarRascunho(); } });
         d.appendChild(pick);
 
-        d.appendChild(el('div', 'lbl req', 'Quando?'));
+        d.appendChild(el('div', 'lbl req lbl-quando', 'Quando?'));
         d.appendChild(segmento('quando_' + id, [{ v: 'Durante a OS', t: 'Durante a OS' }, { v: 'No deslocamento', t: 'No deslocamento' }], dados.quando || ''));
 
         d.appendChild(el('div', 'lbl req', 'Como ficou?'));
@@ -868,13 +890,13 @@
         const dicaSit = el('div', 'note', '');
         d.appendChild(dicaSit);
 
-        const lblLocal = el('label'); lblLocal.innerHTML = 'Onde exatamente? <span class="opt">(rua, nº do poste, identificação da CTO/CEO)</span>';
+        const lblLocal = el('label', 'lbl-local'); lblLocal.innerHTML = 'Onde exatamente? <span class="opt">(rua, nº do poste, identificação da CTO/CEO)</span>';
         const local = el('input', 'oc-local'); local.placeholder = 'Ex.: Rua da Matriz, CTO-045';
         local.id = 'loc_' + id; lblLocal.htmlFor = local.id;
         if (dados.local) local.value = dados.local;
         d.appendChild(lblLocal); d.appendChild(local);
 
-        const lblDesc = el('label', 'req', 'O que foi encontrado e o que foi feito');
+        const lblDesc = el('label', 'req lbl-desc', 'O que foi encontrado e o que foi feito');
         const ta = el('textarea', 'oc-desc'); ta.id = 'desc_' + id; lblDesc.htmlFor = ta.id;
         ta.placeholder = 'Ex.: CTO-045 no caminho estava sem as fusões; foi baixada, fusionada e reinstalada.';
         ta.style.minHeight = '70px';
@@ -910,6 +932,7 @@
             local.insertAdjacentElement('afterend', g);
         }
         $('occurrences').appendChild(d);
+        marcarObrigOc(d);
         if (dados.tipo) { d.dataset.tipo = dados.tipo; marcarTipoOc(d, dados.tipo); } else marcarTipoOc(d, '');
         (dados.servicos || []).forEach(s => criarServico(lista, s.n, s.q));
         atualizarSit();
@@ -936,8 +959,8 @@
             const pick = card.querySelector('.pick-oc');
             const segQ = card.querySelector('input[name^="quando_"]').closest('.seg');
             const segS = card.querySelector('input[name^="sit_"]').closest('.seg');
-            const ta = card.querySelector('.oc-desc');
-            [pick, segQ, segS, ta].forEach(x => x.classList.remove('input-error'));
+            const ta = card.querySelector('.oc-desc'), inLoc = card.querySelector('.oc-local');
+            [pick, segQ, segS, ta, inLoc].forEach(x => x.classList.remove('input-error'));
 
             const tipo = card.dataset.tipo;
             const quando = valorSeg(card, 'quando_' + id);
@@ -945,9 +968,10 @@
             const desc = ta.value.trim();
             const local = card.querySelector('.oc-local').value.trim();
             if (!tipo) { pick.classList.add('input-error'); erro = erro || 'Em cada ocorrência, escolha o que foi encontrado.'; }
-            if (!quando) { segQ.classList.add('input-error'); erro = erro || 'Informe se a ocorrência foi durante a OS ou no deslocamento.'; }
+            if (obrig.ocLocal && !local) { inLoc.classList.add('input-error'); erro = erro || 'Informe onde exatamente foi cada ocorrência.'; }
+            if (!quando && obrig.ocQuando) { segQ.classList.add('input-error'); erro = erro || 'Informe se a ocorrência foi durante a OS ou no deslocamento.'; }
             if (!situacao) { segS.classList.add('input-error'); erro = erro || 'Informe como ficou cada ocorrência (resolvido, parcial ou pendente).'; }
-            if (!desc) { ta.classList.add('input-error'); erro = erro || 'Descreva o que foi encontrado e o que foi feito em cada ocorrência.'; }
+            if (!desc && obrig.ocDesc) { ta.classList.add('input-error'); erro = erro || 'Descreva o que foi encontrado e o que foi feito em cada ocorrência.'; }
             const servs = lerServicos(card.querySelector('.oc-lista'));
             if (servs === null) erro = erro || 'Nos serviços da ocorrência, escolha o serviço e informe a quantidade.';
             out.push({ tipo, quando, situacao, local, desc, servicos: servs || [], card, lat: card.dataset.lat || '', lng: card.dataset.lng || '', acc: card.dataset.acc || '' });
@@ -1168,6 +1192,7 @@
     }
     function abrirHistorico(semBuscar) {
         const box = $('histBody'); box.innerHTML = '';
+        box.appendChild(cartaoMeusPontos());
         const naFila = new Set(filaLer().map(i => i.id));
         const lim = Date.now() - DIAS_HISTORICO * 86400000;
         const lista = histLer().filter(h => h.criadoEm > lim).sort((a, b) => b.criadoEm - a.criadoEm);
@@ -1186,6 +1211,7 @@
             else if (naFila.has(h.id)) pills.appendChild(el('span', 'pill fila', '⏳ Aguardando envio'));
             else pills.appendChild(el('span', 'pill', '✓ Enviado'));
             if ((sv && sv.finalizada) || h.fin) pills.appendChild(el('span', 'pill fin', 'Finalizada'));
+            if (sv && sv.anulado) pills.appendChild(el('span', 'pill anu', 'Anulado'));
             l1.appendChild(pills);
             it.appendChild(l1);
             it.appendChild(el('div', 'l2', fmtData(h.data) + ' · ' + h.demanda + ' · ' + h.nServ + (h.nServ === 1 ? ' serviço' : ' serviços') + (h.nOc ? ' · ' + h.nOc + (h.nOc === 1 ? ' ocorrência' : ' ocorrências') : '') + ' · lançado às ' + hhmm(h.criadoEm)));
@@ -1197,6 +1223,8 @@
                 if (sv.extra) l3.appendChild(document.createTextNode('  (' + sv.calculado + ' do app + ' + sv.extra + ' da avaliação)'));
                 it.appendChild(l3);
                 if (sv.extra || sv.avaliacao) it.appendChild(el('div', 'aval', 'Avaliação da equipe interna: ' + (sv.extra ? '+' + sv.extra + ' pts' : '') + (sv.avaliacao ? (sv.extra ? ' · ' : '') + sv.avaliacao : '')));
+                (sv.parciais || []).forEach(pa => it.appendChild(el('div', 'aval', 'Parcial avaliada pela coordenação (' + pa.tipo + '): +' + String(pa.pts).replace('.', ',') + ' pts · ' + pa.just)));
+                if (sv.ajuste) it.appendChild(el('div', 'ajc', (sv.anulado ? 'Anulado pela coordenação: ' : 'Alterado pela coordenação: ') + sv.ajuste));
             }
             box.appendChild(it);
         });
@@ -1212,6 +1240,39 @@
             const ids = lista.filter(h => !naFila.has(h.id) && h.status !== 'recusado').map(h => h.id).slice(0, 60);
             buscarStatusHistorico(ids).then(ok => { if (ok && !$('historico').classList.contains('hidden')) abrirHistorico(true); });
         }
+    }
+    // pontos do mês do técnico (mesma conta da comissão na planilha)
+    let mpCache = {};
+    function nomesTecnicos() { const s = new Set(); Object.values(cfg.equipes || {}).forEach(l => (l || []).forEach(n => s.add(n))); return [...s].sort((a, b) => a.localeCompare(b)); }
+    function cartaoMeusPontos() {
+        const c = el('div', 'mp');
+        const nome = $('selectResponsavel').value || lsGet(P + '_mp_nome', '') || (lsGet(LS.ultimo, {}).responsavel || '');
+        const sel = el('select'); sel.appendChild(new Option('Escolha seu nome', ''));
+        nomesTecnicos().forEach(n => sel.appendChild(new Option(n, n)));
+        sel.value = nome;
+        const corpo = el('div', null, nome ? 'Carregando seus pontos…' : 'Escolha seu nome para ver os pontos do mês.');
+        c.appendChild(el('div', 'ghead', 'Meus pontos do mês')); c.appendChild(corpo); c.appendChild(sel);
+        const mostrar = j => {
+            corpo.innerHTML = '';
+            if (!j || !j.ok) { corpo.textContent = 'Sem conexão para buscar os pontos agora.'; return; }
+            corpo.appendChild(el('div', 'big', String(j.pontos).replace('.', ',') + ' pts'));
+            corpo.appendChild(el('div', 'note', j.mes + ' · ' + j.dias + (j.dias === 1 ? ' dia trabalhado' : ' dias trabalhados') + (j.faixa ? ' · faixa ' + j.faixa : '')));
+            if (j.proxima) corpo.appendChild(el('div', 'note', 'Faltam ' + j.faltam + ' pts para a faixa ' + j.proxima + '.'));
+            else if (j.encontrado) corpo.appendChild(el('div', 'note', 'Você está na faixa mais alta. 👏'));
+        };
+        const buscar = async n => {
+            if (!n) return;
+            lsSet(P + '_mp_nome', n);
+            if (mpCache[n]) mostrar(mpCache[n]);
+            if (!navigator.onLine) { if (!mpCache[n]) corpo.textContent = 'Sem internet agora.'; return; }
+            try {
+                const r = await fetchTimeout(GOOGLE_SCRIPT_URL + '?acao=meuspontos&pin=' + encodeURIComponent(getPin()) + '&tecnico=' + encodeURIComponent(n), {}, 15000);
+                const j = await r.json(); mpCache[n] = j; mostrar(j);
+            } catch (e) { if (!mpCache[n]) mostrar(null); }
+        };
+        sel.onchange = () => { corpo.textContent = 'Carregando…'; buscar(sel.value); };
+        buscar(nome);
+        return c;
     }
     function fecharHistorico() { $('historico').classList.add('hidden'); document.body.classList.remove('noscroll'); }
 
@@ -1365,8 +1426,12 @@
         // 1) obrigatórios: OS, equipe, responsável, data, local, demanda
         const campos = [
             ['numOS', 'Informe o número da OS.'], ['selectEquipe', 'Selecione a equipe.'], ['selectResponsavel', 'Selecione o responsável.'],
-            ['dataAtual', 'Informe a data.'], ['localRef', 'Informe o local ou uma referência.'], ['selectDemanda', 'Selecione o tipo de demanda.']
+            ['dataAtual', 'Informe a data.']
         ];
+        if (obrig.local) campos.push(['localRef', 'Informe o local ou uma referência.']);
+        if (obrig.demanda) campos.push(['selectDemanda', 'Selecione o tipo de demanda.']);
+        if (obrig.obs) campos.push(['obsGerais', 'Preencha as observações.']);
+        ['localRef', 'selectDemanda', 'obsGerais'].forEach(id => limparErro($(id)));
         let primeiro = null;
         campos.forEach(([id, msg]) => { const c = $(id); limparErro(c); if (!String(c.value).trim()) { marcarErro(c, msg); primeiro = primeiro || c; } });
         if (primeiro) { irPara(primeiro); return toast('Preencha os campos obrigatórios marcados em vermelho.', true); }

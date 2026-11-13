@@ -2,7 +2,7 @@
 // Faz o app abrir mesmo sem internet. Os envios para a planilha NÃO passam por aqui
 // (a fila de envio continua sendo feita pelo próprio app, no aparelho).
 // Ao publicar uma versão nova do index.html, troque o número abaixo.
-const CACHE = 'infracontrol-v2.7';
+const CACHE = 'infracontrol-v2.8';
 const ARQUIVOS = ['./', './index.html', './empresa.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png', './favicon-32.png'];
 
 self.addEventListener('install', e => {
